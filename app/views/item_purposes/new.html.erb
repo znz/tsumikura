@@ -1,0 +1,9 @@
+<% content_for :title, "用途を追加" %>
+
+<p class="text-sm">
+  <%= link_to "← #{@item.name} の用途", item_purposes_path(@item), class: "text-blue-600 underline" %>
+</p>
+
+<h1 class="mt-2 text-2xl font-bold text-slate-900">用途を追加</h1>
+
+<%= render "form", item: @item, purpose: @purpose, submit_label: "追加する" %>

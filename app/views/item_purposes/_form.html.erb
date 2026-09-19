@@ -1,0 +1,20 @@
+<%# locals: (item:, purpose:, submit_label:) %>
+<%= form_with model: purpose,
+      url: (purpose.new_record? ? item_purposes_path(item) : item_purpose_path(item, purpose)),
+      class: "mt-6 space-y-5" do |form| %>
+  <%= render "form_errors", record: purpose %>
+
+  <div>
+    <%= form.label :name, class: label_classes %>
+    <%= form.text_field :name, required: true, class: field_classes %>
+    <p class="<%= hint_classes %>">「リモコン」「時計」など、この品目の使い先を入れます。</p>
+  </div>
+
+  <div>
+    <%= form.label :default_quantity, class: label_classes %>
+    <%= form.number_field :default_quantity, min: 1, inputmode: "numeric", class: field_classes %>
+    <p class="<%= hint_classes %>">1 回の交換で使う数 (「リモコンは 2 <%= item.unit %>」)。</p>
+  </div>
+
+  <%= form.submit submit_label, class: primary_button_classes %>
+<% end %>

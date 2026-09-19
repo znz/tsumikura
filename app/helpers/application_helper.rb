@@ -29,9 +29,18 @@ module ApplicationHelper
     class_names("flex min-h-11 items-center rounded-lg bg-blue-600 px-4 font-medium text-white hover:bg-blue-500", extra)
   end
 
+  # 「使った」ボタン。片手で押せるよう 44px 以上を確保する (docs/spec/03-screens.md 画面 2 / 4b)
+  def use_button_classes(extra = nil)
+    class_names("flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-blue-600 px-4 font-medium text-white hover:bg-blue-500", extra)
+  end
+
   # 下部タブの「品目」は、一覧だけでなく詳細やフォーム、品目配下の記録画面でもハイライトする
+  ITEM_TAB_CONTROLLERS = %w[ items lots usage_records item_purposes ].freeze
+
   def items_tab_current?
-    controller_path == "items" || controller_path.start_with?("items/") || controller_path == "lots"
+    ITEM_TAB_CONTROLLERS.any? do |name|
+      controller_path == name || controller_path.start_with?("#{name}/")
+    end
   end
 
   def user_role_label(user)
@@ -45,6 +54,13 @@ module ApplicationHelper
   # ロットの由来 (購入 / 初期在庫 / 調整)
   def lot_kind_label(lot)
     t("enums.lot.kind.#{lot.kind}")
+  end
+
+  # 使用を記録するときのロット選択肢。期限で選ぶので期限を先に出す
+  def lot_option_label(lot, item)
+    expiry = lot.expires_on ? "期限 #{l(lot.expires_on)}" : "期限なし"
+
+    "#{expiry} ・ 残り #{lot.remaining_quantity} #{item.unit} (#{l(lot.acquired_on)} 購入)"
   end
 
   # 単価の表示。10 円未満は四捨五入すると 0 円に潰れるので小数 1 桁で出す

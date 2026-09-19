@@ -13,6 +13,27 @@ authenticated_actions = [
   [ "品目のアーカイブ", :post, -> { item_archive_path(item) }, -> { {} } ],
   [ "品目の復元", :delete, -> { item_archive_path(item) }, -> { {} } ],
 
+  [ "使用の入力フォーム", :get, -> { new_item_usage_record_path(item) }, -> { {} } ],
+  [ "使用の記録", :post, -> { item_usage_records_path(item) },
+    -> { { usage_record: { quantity: "1", used_on: Date.current.to_s } } } ],
+  [ "ワンタップ使用", :post, -> { item_quick_use_path(item) }, -> { {} } ],
+  [ "使用の記録の編集フォーム", :get, -> { edit_usage_record_path(usage_record) }, -> { {} } ],
+  [ "使用の記録の更新", :patch, -> { usage_record_path(usage_record) },
+    -> { { usage_record: { quantity: "4", used_on: Date.current.to_s } } } ],
+  [ "使用の記録の削除", :delete, -> { usage_record_path(usage_record) }, -> { {} } ],
+
+  [ "用途一覧", :get, -> { item_purposes_path(item) }, -> { {} } ],
+  [ "用途の追加フォーム", :get, -> { new_item_purpose_path(item) }, -> { {} } ],
+  [ "用途の追加", :post, -> { item_purposes_path(item) }, -> { { item_purpose: { name: "しんき" } } } ],
+  [ "用途の編集フォーム", :get, -> { edit_item_purpose_path(item, purpose) }, -> { {} } ],
+  [ "用途の更新", :patch, -> { item_purpose_path(item, purpose) },
+    -> { { item_purpose: { name: "のっとり" } } } ],
+  [ "用途の並べ替え", :patch, -> { item_purpose_position_path(item, purpose) },
+    -> { { direction: "up" } } ],
+  [ "用途のアーカイブ", :post, -> { item_purpose_archive_path(item, purpose) }, -> { {} } ],
+  [ "用途のアーカイブ解除", :delete, -> { item_purpose_archive_path(item, purpose) }, -> { {} } ],
+  [ "用途の削除", :delete, -> { item_purpose_path(item, purpose) }, -> { {} } ],
+
   [ "購入の入力フォーム", :get, -> { new_item_lot_path(item) }, -> { {} } ],
   [ "購入の記録", :post, -> { item_lots_path(item) },
     -> { { lot: { acquired_on: Date.current.to_s, initial_quantity: "1" } } } ],
@@ -48,8 +69,10 @@ authenticated_actions = [
 ]
 
 RSpec.describe "品目とマスタの認可", type: :request do
-  let(:item) { create(:item, name: "もとの品目") }
+  let(:item) { create(:item, name: "もとの品目", tracks_purposes: true) }
   let(:lot) { create(:lot, item: item, initial_quantity: 5) }
+  let(:purpose) { create(:item_purpose, item: item, name: "もとの用途") }
+  let(:usage_record) { create(:usage_record, item: item, quantity: 2, used_on: Date.current) }
   let(:category) { create(:category, name: "もとのカテゴリ") }
   let(:storage_location) { create(:storage_location, name: "もとの保管場所") }
   let(:store) { create(:store, name: "もとの店舗") }
@@ -69,7 +92,9 @@ RSpec.describe "品目とマスタの認可", type: :request do
   # 突き合わせるので、アクションを足して表に足し忘れるとここが落ちる
   it "表は品目とマスタの全ルートを網羅している" do
     target_controllers = %w[
-      items items/archives lots
+      items items/archives items/quick_uses
+      usage_records lots
+      item_purposes item_purposes/positions item_purposes/archives
       categories categories/positions
       storage_locations storage_locations/positions
       stores
@@ -100,22 +125,34 @@ RSpec.describe "品目とマスタの認可", type: :request do
     it "すべて叩いてもレコードは増えない" do
       item
       lot
+      purpose
+      usage_record
       category
       storage_location
       store
 
       expect { request_all_actions }.not_to change {
-        [ Item.count, Lot.count, StockMovement.count, Category.count, StorageLocation.count, Store.count ]
+        [ Item.count, Lot.count, StockMovement.count, UsageRecord.count, ItemPurpose.count,
+          Category.count, StorageLocation.count, Store.count ]
       }
     end
 
     it "すべて叩いても既存のレコードは変わらない" do
+      # let は遅延評価なので、購入より先に使用が記録されないよう順番に作っておく
+      item
+      lot
+      purpose
+      usage_record
+
       request_all_actions
 
       expect(item.reload.name).to eq "もとの品目"
       expect(item).not_to be_archived
       expect(lot.reload.initial_quantity).to eq 5
-      expect(item.current_quantity).to eq 5
+      expect(purpose.reload.name).to eq "もとの用途"
+      expect(purpose).not_to be_archived
+      expect(usage_record.reload.quantity).to eq 2
+      expect(item.current_quantity).to eq 3
       expect(category.reload.name).to eq "もとのカテゴリ"
       expect(storage_location.reload.name).to eq "もとの保管場所"
       expect(store.reload.name).to eq "もとの店舗"

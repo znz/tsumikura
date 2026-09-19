@@ -157,7 +157,8 @@ item_purposes
   position         integer not null default 0
   archived_at      datetime
   timestamps
-  index: [item_id, name] unique
+  index: [item_id, name] unique, [item_id, position]
+  check: default_quantity > 0
 ```
 
 - **モデル側のバリデーション** (DB の制約ではない):
@@ -176,6 +177,9 @@ item_purposes
 - `manual_interval_days` は「1 単位を何日で使うか」。`pace = 1 ÷ manual_interval_days` となる。
   `estimation_mode: manual` のときは**モデルで必須**にする (空のままだと予測が永久に `unknown` になり、
   `auto` より悪い状態に黙って落ちるため)。
+- `item_purposes` の `position` は**品目ごとに 1 から**振る (`Positioned` を品目の中だけで使う)。
+  全体で連番にすると、別の品目に用途を足しただけで並び順が変わる。
+- `item_purposes.name` は品目の中で一意 (大文字小文字を無視)。長さは 50 文字まで。
 - `last_consumed_on` は使用記録だけでなく**棚卸のマイナス差分も含む**最新日 (廃棄は含まない)。ダッシュボードの「最近使った品目」の並び順にも使う。
 - 集計窓の下限に使うため `tracking_started_on` (その品目の最初の在庫イベント日 = 全 `stock_movements` の `occurred_on` の最小値) を持つ。在庫イベントが無ければ NULL。
 - どちらも `Stock::Recalculator` が台帳から再計算するキャッシュである。過去日の記録を足したり消したりしても正しい値に戻る。
@@ -281,6 +285,18 @@ item_alert_states                     # Web Push の重複通知防止
 日付の列 (`lots.acquired_on` / `stock_movements.occurred_on` / `usage_records.used_on` / `stock_takes.counted_on`) には**未来の日付を指定できない** (モデルのバリデーション)。過去日は自由に指定できる。消費イベントが必ず今日以前にあることを、[予測](02-forecast.md) が前提にしている。
 
 - `stock_movements.usage_record_id` / `stock_take_entry_id` は、参照先のテーブルを作るフェーズ (使用記録 / 棚卸) で `add_foreign_key` する。列と index は在庫台帳と同時に作っておく。
+  - `usage_record_id` の外部キーに **`on_delete` は付けない** (既定の NO ACTION)。使用記録の削除は必ず
+    `Stock::DeleteMovement` が movement を先に消してキャッシュを再計算するので、DB 側で黙って cascade
+    させると台帳だけが消えてキャッシュがずれる。`dependent: :destroy` を通らない削除は DB が止める。
+  - `usage_record_id` の外部キーは **複合** `(usage_record_id, item_id) → usage_records(id, item_id)`
+    (`usage_records` に `[id, item_id]` の unique index を張る)。`(lot_id, item_id)` と同じ理由で、
+    非正規化した `item_id` が使用記録とずれると別の品目のキャッシュが古いまま残る。
+  - `usage_records.item_purpose_id` の外部キーは **複合** `(item_purpose_id, item_id) →
+    item_purposes(id, item_id)` で `on_delete: :restrict`。用途を消すと、その用途の交換履歴と
+    交換周期まで失われるため restrict にし、同時に「他の品目の用途は指せない」ことも DB で保証する。
+    モデル側でも「使用記録がある用途は削除できない」で止め、アーカイブに誘導する。
+  - どちらも MATCH SIMPLE なので、`usage_record_id` / `item_purpose_id` が NULL の行は対象外になる
+    (用途なしの使用記録や、購入・棚卸の movement はそのまま通る)。
 - `stock_movements.item_id` は**複合外部キー** `(lot_id, item_id) → lots(id, item_id)` で守る (`lots` に `[id, item_id]` の unique index を張る)。ロットとずれた `item_id` の行は、品目単位の再計算 (`where(item_id:).group(:lot_id)`) からも検査からも黙って落ちるので、モデルの検証だけに頼らない。
 - **DB の check 制約**:
   - `lots`: `initial_quantity > 0` / `remaining_quantity >= 0` / `(pack_size IS NULL) = (pack_count IS NULL)` / `pack_size IS NULL OR pack_size * pack_count = initial_quantity` (入数 × パック数は「両方あって積が数量と一致する」か「両方 NULL」)。
@@ -301,7 +317,8 @@ item_alert_states                     # Web Push の重複通知防止
 | 品目 | 物理削除しない。`archived_at` でアーカイブし、一覧・ダッシュボード・買い物リストから外す。履歴と集計には残す |
 | ロット | **出庫の `stock_movement` (負の数量) が紐づくロットは削除できない** (バリデーションエラー)。使用・廃棄だけでなく**棚卸のマイナス差分 (負の `adjustment`) も対象**にする (消すと確定済みの棚卸の記録と消費ペースの分子まで消えるため)。入庫の記録だけのロットは削除可。削除するとその `purchase` movement も消え、在庫が元に戻る。画面から編集・削除できるのは `kind` が `purchase` / `initial` のロットだけ (調整ロットは、元になった棚卸・使用記録の側から直す) |
 | ロットの数量編集 | 編集後の残数が負になる変更は**バリデーションエラー**にする (「このロットからは既に 5 本使われています」) |
-| 使用記録 | 削除可。分割された `stock_movements` も `dependent: :destroy` で消え、`Stock::Recalculator` で在庫が戻る |
+| 使用記録 | 削除可。分割された `stock_movements` も `dependent: :destroy` で消え、`Stock::Recalculator` で在庫が戻る。在庫不足を補填した調整ロットも、movement が無くなれば一緒に消す |
+| 用途 | **使用記録が紐づく用途は削除できない** (バリデーションエラー)。消すと交換履歴と交換周期が失われるため、`archived_at` でアーカイブして一覧から外す。外部キーも `restrict`。使用記録が無い用途 (打ち間違いなど) は削除できる |
 | 棚卸 | 下書きは削除可。確定済みは削除しない (調整 movement の履歴が残る) |
 | ユーザー | 削除しない。`deactivated_at` で無効化する (記録者参照が残るため) |
 | カテゴリ / 保管場所 / 店舗 | **削除時は nullify**。外部キーは `on_delete: :nullify`、モデルは `dependent: :nullify`。削除前に「n 件の品目からカテゴリが外れます」と確認する |
@@ -318,10 +335,12 @@ class Item < ApplicationRecord
   # 予測に渡すときは estimation_mode.to_sym にする (Forecast::Pace は文字列を受け付けない)
   enum :estimation_mode, { auto: 0, manual: 1, none: 2 }, prefix: true, validate: true
 
-  has_many :item_purposes, -> { order(:position) }, dependent: :destroy
-  has_many :lots, dependent: :destroy
+  # 宣言の順がそのまま削除の順になるので、参照する側から先に消す
+  # (movement → ロット、使用記録 → 用途)
   has_many :stock_movements, dependent: :destroy
+  has_many :lots, dependent: :destroy
   has_many :usage_records, dependent: :destroy
+  has_many :item_purposes, -> { order(:position, :id) }, dependent: :destroy
   has_one  :alert_state, class_name: "ItemAlertState", dependent: :destroy
   has_one  :shopping_list_item, dependent: :destroy
 
@@ -352,8 +371,21 @@ class UsageRecord < ApplicationRecord
   belongs_to :item_purpose, optional: true
   belongs_to :user
   has_many   :stock_movements, dependent: :destroy   # 1..n (FEFO で分割)
+
+  # 引き当て先のロットの手動指定 (期限を管理する品目のみ)。既定は FEFO の自動引き当てなので
+  # DB には持たず、引き当ての結果は stock_movements に残る
+  attr_accessor :lot_id
+  # 在庫不足を補填した数 (フラッシュの「n 個を調整しました」用)。DB には持たない
+  attr_accessor :compensated_quantity
 end
 ```
+
+`Item` の `has_many` は**宣言の順がそのまま削除の順になる**ので、参照する側から先に消す
+(`stock_movements` → `lots`、`usage_records` → `item_purposes`)。逆にすると
+`Lot#ensure_not_consumed` / `ItemPurpose#ensure_not_used` と外部キーに止められる。
+
+`UsageRecord#quantity` は**空で送られたら補う** (選んだ用途の `default_quantity`、用途なしなら 1)。
+「リモコンは 2 本」を JS 無しでも効かせるための規則で、0 や負は入力の誤りとして検証エラーにする。
 
 ## 5. コマンド (サービスオブジェクト)
 
@@ -365,6 +397,7 @@ app/models/stock/
   recalculator.rb         # lot.remaining_quantity / lot.depleted_at / item.current_quantity /
                           #   tracking_started_on / last_consumed_on を再計算
   verifier.rb             # キャッシュと台帳の差異を集める (rake stock:verify)
+  usage_movements.rb      # 使用記録 1 件ぶんの movement の作成と片づけ (下の 3 つが共有する)
   record_usage.rb         # UsageRecord + StockMovement(s) を作る
   record_purchase.rb      # Lot + StockMovement(purchase) を作る (kind: initial も同じ経路)
   revise_lot.rb           # ロットの編集 (入庫の movement を直して再計算)
@@ -372,12 +405,14 @@ app/models/stock/
   record_disposal.rb      # StockMovement(disposal) を作る
   finalize_stock_take.rb  # StockTake 確定 -> 差分から StockMovement(adjustment) を作る
   revise_usage.rb         # 使用記録の編集 (movements を作り直して再計算)
-  delete_movement.rb      # 記録削除 -> 再計算
+  delete_movement.rb      # 記録削除 -> 再計算 (Phase 8 では使用記録。廃棄は Phase 9 で足す)
 ```
 
 サービスは「保存できたか」を戻り値のレコード (`persisted?` / `errors`) で伝え、例外は使わない。
 検証エラーのときは `ActiveRecord::Rollback` でトランザクションを畳み、**Lot だけ・movement だけが残る
-状態を作らない**。
+状態を作らない**。ただし**台帳の異常は例外にする**: ロックの後に読み直した対象が既に消えていれば
+`ActiveRecord::RecordNotFound`、入庫の movement が無いロットは `InboundMovementMissing`。
+「削除しました」と嘘をつかないための区別で、コントローラ側で拾って案内する。
 
 **サービスを書くときの決まり**
 
@@ -393,7 +428,26 @@ app/models/stock/
 
 **引き当て順 (`Stock::Allocator`)**
 
+```ruby
+Stock::Allocator.call(item:, quantity:, user:, on:, preferred_lot_id: nil, fallback_lot_ids: [])
+  # => Result(allocations: [[lot, qty], ...], shortage:, compensating_lot:,
+  #           preferred_lot_unavailable:)
+```
+
 自動引き当ては FEFO (期限が近い順 → 購入が古い順、期限なしはその後) で行い、**期限切れロットは最後**に回す。要購入判定の在庫 `q` は期限切れロットを除いて数えるので、期限切れロットから先に引くと「使ったのに `q` が減らない」状態になるためである。期限切れのものを実際に使った場合は、使用記録のロット選択で手動指定する。
+
+- `preferred_lot_id`: ユーザーが選んだロット。FEFO より先に引く。
+- `fallback_lot_ids`: **編集前に引いていたロット** (`Stock::ReviseUsage` が渡す)。`preferred_lot_id` の次に
+  優先する。編集は movement を作り直すので、これが無いとメモや用途を直しただけで別のロットに移り、
+  実物のあるロットが `depleted` になったり、期限切れかどうかが変わって `q` が動いたりする。
+  片づいた補填の調整ロットの id は候補に見つからないので黙って無視される。
+- `on`: 使用日。補填の調整ロットの `acquired_on` になる (期限切れかどうかは「今日」で判断する)。
+- **副作用**: 不足分があれば `kind: adjustment` のロットを作る (下記)。補填の入庫 movement は
+  `usage_record_id` を持たせる必要があるので `Stock::UsageMovements` が作る。
+- `preferred_lot_unavailable`: 指定されたロットが (フォームを開いている間に使い切られて) 引き当てに
+  使えなかった。**記録は成功させ** (設計原則 3)、「指定したロットは使い切られていたため、ほかの
+  ロットから引きました」と伝える。**他の品目のロットを指定された場合は検証エラー** (422) にする
+  (別の世帯のものを指すような入力で、黙って FEFO に倒すと何が起きたか分からない)。
 
 **在庫不足時の挙動 (`Stock::Allocator`)**
 
@@ -407,11 +461,56 @@ app/models/stock/
 
 補填で作った調整ロットは、その使用記録を**削除・編集したときに一緒に片づける**。補填の `+movement` にも
 `usage_record_id` を持たせ、movement がすべて無くなった調整ロットは削除する (残しておくと、実在しない
-在庫を持つ空のロットが積み上がる)。
+在庫を持つ空のロットが積み上がる)。棚卸のプラス差分で作られた調整ロットには使用記録に紐づかない入庫が
+残るので、この後始末では消えない。
+
+**ロットを手動指定したときに残数が足りない場合**は、指定したロット → FEFO の続き → 補填 の順に引く。
+指定したロットに実在する在庫が残っているのに補填してしまうと、実在しない在庫が増えたうえ、
+実在する在庫が使われないまま残ってしまうため。
+
+**使用記録の編集 (`Stock::ReviseUsage`) は movement を作り直す。** FEFO の分割は数量・日付・ロット指定で
+変わり、補填の調整ロットも付いたり消えたりするので、差分更新では合わせきれない。作り直すときは
+「**元のロットの id を控える** → 古い movement を消す → 再計算 → 元のロットを優先して引き当て直す →
+再計算」の順にする (在庫を戻す前に引き当てると、自分がさっき引いた分がもう一度必要になって
+要らない補填が作られる。元のロットを優先しないと、メモを直しただけでロット別の残数が変わる)。
 
 `Stock::ReviseLot` は「入庫の movement = そのロットの最初の正の movement」という前提で数量を直し、
 「新しい数量 >= そのロットからの出庫の合計」を検証している。**既存のロットに正の `adjustment` を足す
 設計を入れるなら**、この前提が崩れるので「Σ movements − 旧入庫 + 新数量 >= 0」に直すこと。
+
+**Phase 8 から Phase 9 (棚卸・廃棄) への申し送り**
+
+- `stock_take_entries` を作ったら `stock_movements.stock_take_entry_id` に `add_foreign_key` する。
+  `usage_record_id` と同じく **`on_delete` は付けない** (台帳だけが消えるとキャッシュがずれる)。
+  `(stock_take_entry_id, item_id)` の複合にできるかも検討する (`usage_record_id` と同じ理由)。
+- **`Stock::Allocator` は不足分を必ず補填する** (調整ロットを作る)。棚卸のマイナス差分の引き当てで
+  使うなら `compensate: false` のようなオプションを足して、補填しない経路を用意する
+  (棚卸は「実数がこれだけだった」という記録なので、足りない分を作ってはいけない)。
+- **使用記録に紐づかない `kind: usage` の movement を作らない。** `rake stock:verify` が検出する
+  (既存の spec / factory が作っているので DB の check 制約にはしていない)。
+- `flash[:undo_usage_record_id]` とトーストの「取り消し」は使用記録専用になっている。
+  廃棄の取り消しにも使うなら、`undo_path` を渡す形に一般化する。
+- 判断 1 の「直近の棚卸日より前の日付です」の警告は、Phase 9 で使用記録と購入のフォームに足す。
+- `Stock::DeleteMovement` は Phase 8 では使用記録 (`UsageRecord`) を受け取る。廃棄の記録
+  (`StockMovement` 単体) を消す経路を足すときは、引数の型で分岐せず別のサービスに分けるか、
+  「movement を消す → 空になった調整ロットを片づける → 再計算」の共通部分
+  (`Stock::UsageMovements`) を一般化する。
+- 棚卸のプラス差分で作る調整ロットは、**使用記録に紐づかない入庫 movement** を必ず持たせる。
+  持たせないと、そのロットから引いた使用記録を消したときに `Stock::UsageMovements#discard!` の
+  後始末が「空の調整ロット」とみなして消してしまう。
+- 棚卸のマイナス差分の引き当ても `Stock::Allocator` を使う (FEFO・期限切れは最後)。
+  補填は要らないので、在庫より多く引こうとしたときの扱いは棚卸側で決める。
+- 用途 (`item_purposes`) の並べ替えは品目ごとのスコープ (`Positioned#positioned_siblings`) で動く。
+  同じ仕組みで親ごとに並べ替えたいモデルが出たら、このメソッドを上書きする
+  (画面の一覧に出ない行は範囲から外し、採番は `positioned_numbering_scope` で全体の末尾から振る)。
+
+**Phase 8 から Phase 10 (予測の結線) への申し送り**
+
+- `u` (1 回あたりの使用数) は `usage_records.quantity` の中央値、消費量は `stock_movements` の合計で、
+  **別々のテーブルから数える**。両者が一致していることは `rake stock:verify` の
+  「使用の数量」の検査が担保している。
+- 在庫不足を補填した使用も、消費 (`StockMovement.consumption`) にはそのまま入る。
+  補填の入庫は正の `adjustment` なので `consumption` スコープから外れており、分子は歪まない。
 
 ## 6. 予測が参照する値
 

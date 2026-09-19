@@ -1,0 +1,104 @@
+<%# locals: (item:, usage_record:, purposes:, lots:, submit_label:) %>
+<%#
+  数量の「+ / −」と「用途を選んだら既定の数量を入れる」を同じ Stimulus で扱うので、
+  コントローラはフォーム全体に付ける
+%>
+<%= form_with model: usage_record,
+      url: (usage_record.new_record? ? item_usage_records_path(item) : usage_record_path(usage_record)),
+      class: "mt-6 space-y-5",
+      data: { controller: "quantity-stepper", quantity_stepper_min_value: 1 } do |form| %>
+  <%= render "form_errors", record: usage_record %>
+
+  <%#
+    数量。スマホで押しやすい「+ / −」は JS があるときだけ出す
+    (docs/spec/03-screens.md 画面 4)。JS が無くても数値入力だけで記録できる。
+    空で送ると、選んだ用途の既定数量 (用途なしなら 1) をサーバ側で補う。
+  %>
+  <div>
+    <%= form.label :quantity, class: label_classes %>
+    <div class="mt-2 flex items-center gap-2">
+      <button type="button" hidden data-quantity-stepper-target="control"
+              data-action="quantity-stepper#step" data-quantity-stepper-by-param="-1"
+              aria-label="数量を 1 減らす"
+              class="size-14 shrink-0 cursor-pointer rounded-lg border border-slate-300 text-2xl text-slate-700">−</button>
+      <%= form.number_field :quantity, min: 1, inputmode: "numeric", required: true,
+            data: { quantity_stepper_target: "input" }, class: field_classes("text-center text-lg") %>
+      <button type="button" hidden data-quantity-stepper-target="control"
+              data-action="quantity-stepper#step" data-quantity-stepper-by-param="1"
+              aria-label="数量を 1 増やす"
+              class="size-14 shrink-0 cursor-pointer rounded-lg border border-slate-300 text-2xl text-slate-700">＋</button>
+    </div>
+  </div>
+
+  <% if purposes.any? %>
+    <%#
+      用途チップ。予測は品目全体で行い、用途は履歴と交換周期の表示専用。
+      JS があれば選んだ時点で既定の数量 (「リモコンは 2 本」) が数量欄に入り、
+      JS が無くても数量を空で送ればサーバ側が同じ値を補う。
+    %>
+    <fieldset>
+      <legend class="<%= label_classes %>"><%= UsageRecord.human_attribute_name(:item_purpose) %></legend>
+      <div class="mt-2 flex flex-wrap gap-2">
+        <label class="flex min-h-11 items-center gap-2 rounded-full border border-slate-300 px-4">
+          <%= form.radio_button :item_purpose_id, "", class: "size-5",
+                data: { action: "change->quantity-stepper#useDefault",
+                        quantity_stepper_default_param: UsageRecord::DEFAULT_QUANTITY } %>
+          <span class="text-sm text-slate-700">指定なし</span>
+        </label>
+        <% purposes.each do |purpose| %>
+          <label class="flex min-h-11 items-center gap-2 rounded-full border border-slate-300 px-4">
+            <%= form.radio_button :item_purpose_id, purpose.id, class: "size-5",
+                  data: { action: "change->quantity-stepper#useDefault",
+                          quantity_stepper_default_param: purpose.default_quantity } %>
+            <span class="text-sm text-slate-700">
+              <%= purpose.name %>
+              <%# アーカイブ済みでも、その用途が付いた記録の編集では選べるようにする %>
+              <%= "(アーカイブ済み)" if purpose.archived? %>
+            </span>
+          </label>
+        <% end %>
+      </div>
+      <p class="<%= hint_classes %>">用途を選ぶと、その用途の既定の数量になります。</p>
+    </fieldset>
+  <% end %>
+
+  <%# 使用日。既定は今日で、未来日は選べない (docs/spec/01-domain-model.md 2 節) %>
+  <div data-controller="date-shortcut">
+    <%= form.label :used_on, class: label_classes %>
+    <div class="mt-2 flex gap-2" data-date-shortcut-target="control" hidden>
+      <% { "今日" => 0, "昨日" => 1 }.each do |label, days_ago| %>
+        <button type="button" data-action="date-shortcut#select"
+                data-date-shortcut-days-ago-param="<%= days_ago %>"
+                class="min-h-11 flex-1 cursor-pointer rounded-lg border border-slate-300 px-4 text-sm text-slate-700"><%= label %></button>
+      <% end %>
+    </div>
+    <%= form.date_field :used_on, max: Date.current, required: true,
+          data: { date_shortcut_target: "input" }, class: field_classes %>
+  </div>
+
+  <% if lots.any? %>
+    <%#
+      ロットの選択は期限を管理する品目だけ。新規は FEFO の自動引き当て、
+      編集は「変更しない」が既定 (選び直さない限り、いま引いているロットから引き直す)。
+    %>
+    <div>
+      <%= form.label :lot_id, class: label_classes %>
+      <%# 検証エラーで描き直すときに選択を保つため、値は文字列でそろえる %>
+      <%= form.select :lot_id,
+            options_for_select(lots.map { |lot| [ lot_option_label(lot, item), lot.id.to_s ] },
+              usage_record.lot_id.to_s),
+            { include_blank: usage_record.new_record? ? "自動 (期限が近い順)" : "変更しない (今のロットを優先)" },
+            class: field_classes %>
+      <p class="<%= hint_classes %>">
+        ふつうはそのままで構いません。期限切れのものを使ったときだけ選びます。
+      </p>
+    </div>
+  <% end %>
+
+  <div>
+    <%= form.label :note, class: label_classes %>
+    <%= form.text_area :note, rows: 2, class: field_classes %>
+  </div>
+
+  <%= form.submit submit_label, class: primary_button_classes %>
+<% end %>

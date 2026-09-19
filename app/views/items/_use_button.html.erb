@@ -1,0 +1,15 @@
+<%# locals: (item:) %>
+<%#
+  「使った」ボタン (docs/spec/03-screens.md 画面 2 / 4b)。
+  用途を管理する品目はワンタップだと用途が付かないので、用途を選べるフォームへ誘導する。
+  それ以外はワンタップで即記録し、取り消せるトーストを出す。
+%>
+<%# アーカイブ済みの品目は日々使う導線から外す (記録自体はサーバが受け付ける) %>
+<% if item.archived? %>
+<% elsif item.tracks_purposes? %>
+  <%= link_to "使った", new_item_usage_record_path(item),
+        aria: { label: "「#{item.name}」を使った" }, class: use_button_classes %>
+<% else %>
+  <%= button_to "使った", item_quick_use_path(item), form: { class: "shrink-0" },
+        aria: { label: "「#{item.name}」を使った" }, class: use_button_classes %>
+<% end %>

@@ -1,0 +1,17 @@
+<%#
+  ワンタップ使用の応答 (docs/spec/03-screens.md 画面 4b)。
+  一覧の行と品目詳細の本文をまとめて差し替え、トーストを足す。
+  Turbo は画面に無い id を黙って無視するので、一覧からでも詳細からでも同じ応答で足りる。
+%>
+<%= turbo_stream.replace dom_id(@item) do %>
+  <%= render "items/item", item: @item %>
+<% end %>
+
+<%# 詳細は入れ物の div を残したいので update (replace だと差し替え先の id ごと消える) %>
+<%= turbo_stream.update dom_id(@item, :detail) do %>
+  <%= render "items/detail" %>
+<% end %>
+
+<%= turbo_stream.append "toasts" do %>
+  <%= render "layouts/toast", message: @toast_message, usage_record_id: @undo_usage_record_id %>
+<% end %>

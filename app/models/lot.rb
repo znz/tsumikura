@@ -99,6 +99,17 @@ class Lot < ApplicationRecord
     depleted_at.present?
   end
 
+  # 画面から編集・削除できるのは購入と初期在庫のロットだけ。
+  # 調整ロット (棚卸・在庫不足の自動補填が作る) は元になった記録の側から直す
+  def recordable?
+    kind.in?(RECORDABLE_KINDS)
+  end
+
+  # 「最近の記録」で使用記録 (UsageRecord) と時系列に混ぜるための共通の日付
+  def recorded_on
+    acquired_on
+  end
+
   # このロットから出て行った数 (使用・廃棄・マイナスの調整) の絶対値
   def consumed_quantity
     -stock_movements.where(quantity: ...0).sum(:quantity)

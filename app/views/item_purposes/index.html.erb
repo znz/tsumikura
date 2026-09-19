@@ -1,0 +1,75 @@
+<% content_for :title, "#{@item.name} の用途" %>
+
+<p class="text-sm">
+  <%= link_to "← #{@item.name}", item_path(@item), class: "text-blue-600 underline" %>
+</p>
+
+<div class="mt-2 flex items-center justify-between gap-2">
+  <h1 class="text-2xl font-bold text-slate-900">用途</h1>
+  <%= link_to "用途を追加", new_item_purpose_path(@item), class: add_link_classes %>
+</div>
+
+<p class="mt-2 text-sm text-slate-600">
+  使用を記録するときに選べます。予測は品目全体で行い、用途ごとには交換履歴と交換周期を出します。
+</p>
+
+<% if @purposes.empty? %>
+  <p class="mt-6 rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600">
+    まだ用途がありません。
+  </p>
+<% else %>
+  <ul class="mt-6 space-y-3" aria-label="用途一覧">
+    <% @purposes.each_with_index do |purpose, index| %>
+      <li class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <p class="truncate font-medium text-slate-900"><%= purpose.name %></p>
+            <p class="text-sm text-slate-500">
+              既定の数量 <%= purpose.default_quantity %> <%= @item.unit %> ・
+              使用 <%= purpose.usage_count %> 件
+              <% if purpose.last_used_on %>
+                ・ 最終交換日 <%= l(purpose.last_used_on) %>
+              <% end %>
+            </p>
+          </div>
+          <%= link_to "編集", edit_item_purpose_path(@item, purpose),
+                class: secondary_button_classes("shrink-0") %>
+        </div>
+
+        <div class="mt-3 flex items-center gap-2">
+          <%# 行が増えてもボタン名が区別できるよう、アクセシブルネームに名前を入れる %>
+          <%= button_to "上へ", item_purpose_position_path(@item, purpose), method: :patch,
+                params: { direction: "up" }, disabled: index.zero?,
+                aria: { label: "「#{purpose.name}」を上へ" },
+                class: secondary_button_classes("disabled:opacity-40") %>
+          <%= button_to "下へ", item_purpose_position_path(@item, purpose), method: :patch,
+                params: { direction: "down" }, disabled: index == @purposes.size - 1,
+                aria: { label: "「#{purpose.name}」を下へ" },
+                class: secondary_button_classes("disabled:opacity-40") %>
+          <%= button_to "アーカイブ", item_purpose_archive_path(@item, purpose), method: :post,
+                aria: { label: "「#{purpose.name}」をアーカイブ" },
+                class: secondary_button_classes %>
+        </div>
+      </li>
+    <% end %>
+  </ul>
+<% end %>
+
+<% if @archived_purposes.any? %>
+  <details class="group mt-6">
+    <summary class="flex min-h-11 cursor-pointer list-none items-center gap-2 py-2 text-sm font-medium text-slate-700">
+      <span class="text-slate-400 transition-transform group-open:rotate-90" aria-hidden="true">▶</span>
+      <span>アーカイブ済みの用途 (<%= @archived_purposes.size %> 件)</span>
+    </summary>
+    <ul class="space-y-3" aria-label="アーカイブ済みの用途一覧">
+      <% @archived_purposes.each do |purpose| %>
+        <li class="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-4">
+          <p class="min-w-0 truncate font-medium text-slate-700"><%= purpose.name %></p>
+          <%= button_to "戻す", item_purpose_archive_path(@item, purpose), method: :delete,
+                aria: { label: "「#{purpose.name}」のアーカイブを解除" },
+                class: secondary_button_classes("shrink-0") %>
+        </li>
+      <% end %>
+    </ul>
+  </details>
+<% end %>

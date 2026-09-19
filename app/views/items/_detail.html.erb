@@ -1,0 +1,144 @@
+<%#
+  品目詳細の「動く」部分 (在庫・ロット・用途・最近の記録)。
+  ワンタップ使用の Turbo Stream がここを丸ごと差し替えるので、
+  ItemDetails#load_item_detail が用意した ivar をそのまま使う。
+%>
+<section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="在庫">
+  <p class="text-sm text-slate-500">在庫数</p>
+  <p class="mt-1">
+    <span class="text-4xl font-bold text-slate-900"><%= @item.current_quantity %></span>
+    <span class="ml-1 text-lg text-slate-600"><%= @item.unit %></span>
+  </p>
+  <% if @item.minimum_quantity.present? %>
+    <p class="<%= hint_classes %>">最低在庫数: <%= @item.minimum_quantity %> <%= @item.unit %></p>
+  <% end %>
+
+  <div class="mt-4 flex gap-2">
+    <%# 用途を管理する品目では「使った」も同じフォームに行くので、片方だけ出す %>
+    <% unless @item.tracks_purposes? %>
+      <%= render "items/use_button", item: @item %>
+    <% end %>
+    <%= link_to "使用を記録", new_item_usage_record_path(@item),
+          class: secondary_button_classes("flex-1") %>
+  </div>
+
+  <%= link_to "購入を記録", new_item_lot_path(@item),
+        class: primary_button_classes("mt-2 block text-center") %>
+</section>
+
+<%# ロットは期限が近い順 (FEFO)。使い切ったロットは畳んでおく (docs/spec/01-domain-model.md 判断 2) %>
+<section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="ロット">
+  <h2 class="font-bold text-slate-900">ロット</h2>
+  <% if @average_unit_price_yen %>
+    <p class="<%= hint_classes %>">
+      最近の単価: 平均 <%= unit_price_text(@average_unit_price_yen, @item.unit) %>
+      <span class="text-slate-400">(価格を記録した直近 <%= Lot::RECENT_PRICED_LOTS %> 件)</span>
+    </p>
+  <% end %>
+
+  <% if @available_lots.any? %>
+    <ul class="mt-3 divide-y divide-slate-200" aria-label="ロット一覧">
+      <% @available_lots.each do |lot| %>
+        <%= render "lots/lot", lot: lot, item: @item %>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="mt-3 text-sm text-slate-600">在庫のあるロットはまだありません。</p>
+  <% end %>
+
+  <% if @depleted_lots.any? %>
+    <details class="group mt-3 border-t border-slate-200 pt-3">
+      <summary class="flex min-h-11 cursor-pointer list-none items-center gap-2 py-2 text-sm font-medium text-slate-700">
+        <span class="text-slate-400 transition-transform group-open:rotate-90" aria-hidden="true">▶</span>
+        <span>使い切ったロット (<%= @depleted_lots_count %> 件)</span>
+      </summary>
+      <ul class="divide-y divide-slate-200" aria-label="使い切ったロット一覧">
+        <% @depleted_lots.each do |lot| %>
+          <%= render "lots/lot", lot: lot, item: @item %>
+        <% end %>
+      </ul>
+      <% if @depleted_lots_count > @depleted_lots.size %>
+        <p class="<%= hint_classes %>">新しい <%= @depleted_lots.size %> 件だけを表示しています。</p>
+      <% end %>
+    </details>
+  <% end %>
+</section>
+
+<%# 用途は履歴と交換周期の表示専用 (docs/spec/01-domain-model.md 判断 4) %>
+<% if @item.tracks_purposes? %>
+  <section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="用途">
+    <div class="flex items-center justify-between gap-2">
+      <h2 class="font-bold text-slate-900">用途</h2>
+      <%= link_to "用途を管理", item_purposes_path(@item), class: secondary_button_classes("shrink-0") %>
+    </div>
+
+    <% if @purposes.any? %>
+      <ul class="mt-3 divide-y divide-slate-200" aria-label="用途一覧">
+        <% @purposes.each do |purpose| %>
+          <li class="py-3">
+            <p class="font-medium text-slate-900"><%= purpose.name %></p>
+            <p class="mt-1 text-sm text-slate-500">
+              <% if purpose.last_used_on %>
+                最終交換日: <%= l(purpose.last_used_on) %>
+                <% if (interval = purpose.replacement_interval_days) %>
+                  ・ 交換周期: 約 <%= interval %> 日
+                <% else %>
+                  ・ 交換周期は 2 回目の記録から出ます
+                <% end %>
+              <% else %>
+                まだ使用の記録がありません
+              <% end %>
+            </p>
+          </li>
+        <% end %>
+      </ul>
+    <% else %>
+      <p class="mt-3 text-sm text-slate-600">まだ用途がありません。</p>
+    <% end %>
+  </section>
+<% end %>
+
+<%# 使用と購入を時系列で混ぜる (docs/spec/03-screens.md 画面 3 の履歴タブ) %>
+<section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="最近の記録">
+  <h2 class="font-bold text-slate-900">最近の記録</h2>
+
+  <% if @recent_records.empty? %>
+    <p class="mt-3 text-sm text-slate-600">まだ記録がありません。</p>
+  <% else %>
+    <ul class="mt-3 divide-y divide-slate-200" aria-label="最近の記録一覧">
+      <% @recent_records.each do |record| %>
+        <li class="flex items-start justify-between gap-3 py-3">
+          <div class="min-w-0">
+            <% if record.is_a?(UsageRecord) %>
+              <p class="font-medium text-slate-900">
+                使った <%= record.quantity %> <%= @item.unit %>
+                <% if record.item_purpose %>
+                  <span class="text-sm font-normal text-slate-500">(<%= record.item_purpose.name %>)</span>
+                <% end %>
+              </p>
+            <% else %>
+              <p class="font-medium text-slate-900">
+                <%= lot_kind_label(record) %> <%= record.initial_quantity %> <%= @item.unit %>
+                <% if record.store %>
+                  <span class="text-sm font-normal text-slate-500"><%= record.store.name %></span>
+                <% end %>
+              </p>
+            <% end %>
+            <p class="mt-1 text-sm text-slate-500"><%= l(record.recorded_on) %></p>
+          </div>
+
+          <div class="flex shrink-0 items-center gap-2">
+            <% if record.is_a?(UsageRecord) %>
+              <%= link_to "編集", edit_usage_record_path(record), class: secondary_button_classes %>
+              <%= button_to "削除", usage_record_path(record), method: :delete,
+                    form: { data: { turbo_confirm: "この使用の記録を削除します。よろしいですか?" } },
+                    class: secondary_button_classes("cursor-pointer text-red-700") %>
+            <% else %>
+              <%= link_to "編集", edit_lot_path(record), class: secondary_button_classes %>
+            <% end %>
+          </div>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+</section>

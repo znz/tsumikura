@@ -1,4 +1,5 @@
-<% if flash.any? %>
+<%# トースト (flash[:toast]) は #toasts の担当なので、ここでは notice / alert だけを見る %>
+<% if flash[:notice].present? || flash[:alert].present? %>
   <div class="mx-auto w-full max-w-2xl px-4 pt-4">
     <% if notice = flash[:notice] %>
       <p id="notice" class="rounded-lg bg-green-50 px-4 py-3 text-sm font-medium text-green-800"><%= notice %></p>

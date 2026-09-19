@@ -12,11 +12,23 @@ Rails.application.routes.draw do
   # アーカイブ / 復元を Items::ArchivesController に分ける
   resources :items, except: :destroy do
     resource :archive, only: %i[ create destroy ], module: :items
-    # 購入 (ロット) の入力は品目配下
+    # ワンタップ使用 (数量 1・今日・FEFO 自動)。品目の属性を触らないので
+    # ItemsController には混ぜず、1 リソース = 1 コントローラに分ける
+    resource :quick_use, only: :create, module: :items
+    # 使用・購入の入力は品目配下
+    resources :usage_records, only: %i[ new create ]
     resources :lots, only: %i[ new create ]
+    # 用途マスタは品目詳細配下 (docs/spec/03-screens.md 画面 9b)。
+    # as: :purposes で item_purposes_path(item) / edit_item_purpose_path(item, purpose) になる
+    resources :item_purposes, path: "purposes", as: :purposes, except: :show do
+      # 並べ替えとアーカイブは、position / archived_at を update で permit しないために分ける
+      resource :position, only: :update, module: :item_purposes
+      resource :archive, only: %i[ create destroy ], module: :item_purposes
+    end
   end
   # 編集・削除は品目 id を URL に持たない (shallow)。
-  # ロットの一覧・詳細は品目詳細が兼ねるので index / show は置かない
+  # 使用記録・ロットの一覧・詳細は品目詳細が兼ねるので index / show は置かない
+  resources :usage_records, only: %i[ edit update destroy ]
   resources :lots, only: %i[ edit update destroy ]
 
   # マスタ。show は一覧で足りるので置かない。

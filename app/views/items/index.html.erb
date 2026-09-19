@@ -45,29 +45,6 @@
 <% else %>
   <ul class="mt-6 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white"
       aria-label="品目一覧">
-    <% @items.each do |item| %>
-      <li>
-        <%= link_to item_path(item), class: "flex min-h-14 items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50" do %>
-          <span class="min-w-0">
-            <span class="block truncate font-medium text-slate-900">
-              <%= item.name %>
-              <% if item.favorite? %>
-                <span class="text-amber-500" role="img" aria-label="お気に入り">★</span>
-              <% end %>
-            </span>
-            <span class="block truncate text-sm text-slate-500">
-              <%= [ item.category&.name, item.storage_location&.name ].compact_blank.join(" / ").presence || "分類なし" %>
-              <% if item.archived? %>
-                <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">アーカイブ済み</span>
-              <% end %>
-            </span>
-          </span>
-          <span class="shrink-0 text-right">
-            <span class="block text-lg font-bold text-slate-900"><%= item.current_quantity %></span>
-            <span class="block text-xs text-slate-500"><%= item.unit %></span>
-          </span>
-        <% end %>
-      </li>
-    <% end %>
+    <%= render partial: "items/item", collection: @items %>
   </ul>
 <% end %>

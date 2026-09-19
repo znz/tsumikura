@@ -27,57 +27,10 @@
   </div>
 <% end %>
 
-<section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="在庫">
-  <p class="text-sm text-slate-500">在庫数</p>
-  <p class="mt-1">
-    <span class="text-4xl font-bold text-slate-900"><%= @item.current_quantity %></span>
-    <span class="ml-1 text-lg text-slate-600"><%= @item.unit %></span>
-  </p>
-  <% if @item.minimum_quantity.present? %>
-    <p class="<%= hint_classes %>">最低在庫数: <%= @item.minimum_quantity %> <%= @item.unit %></p>
-  <% end %>
-
-  <%= link_to "購入を記録", new_item_lot_path(@item),
-        class: primary_button_classes("mt-4 block text-center") %>
-</section>
-
-<%# ロットは期限が近い順 (FEFO)。使い切ったロットは畳んでおく (docs/spec/01-domain-model.md 判断 2) %>
-<section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="ロット">
-  <h2 class="font-bold text-slate-900">ロット</h2>
-  <% if @average_unit_price_yen %>
-    <p class="<%= hint_classes %>">
-      最近の単価: 平均 <%= unit_price_text(@average_unit_price_yen, @item.unit) %>
-      <span class="text-slate-400">(価格を記録した直近 <%= Lot::RECENT_PRICED_LOTS %> 件)</span>
-    </p>
-  <% end %>
-
-  <% if @available_lots.any? %>
-    <ul class="mt-3 divide-y divide-slate-200" aria-label="ロット一覧">
-      <% @available_lots.each do |lot| %>
-        <%= render "lots/lot", lot: lot, item: @item %>
-      <% end %>
-    </ul>
-  <% else %>
-    <p class="mt-3 text-sm text-slate-600">在庫のあるロットはまだありません。</p>
-  <% end %>
-
-  <% if @depleted_lots.any? %>
-    <details class="group mt-3 border-t border-slate-200 pt-3">
-      <summary class="flex min-h-11 cursor-pointer list-none items-center gap-2 py-2 text-sm font-medium text-slate-700">
-        <span class="text-slate-400 transition-transform group-open:rotate-90" aria-hidden="true">▶</span>
-        <span>使い切ったロット (<%= @depleted_lots_count %> 件)</span>
-      </summary>
-      <ul class="divide-y divide-slate-200" aria-label="使い切ったロット一覧">
-        <% @depleted_lots.each do |lot| %>
-          <%= render "lots/lot", lot: lot, item: @item %>
-        <% end %>
-      </ul>
-      <% if @depleted_lots_count > @depleted_lots.size %>
-        <p class="<%= hint_classes %>">新しい <%= @depleted_lots.size %> 件だけを表示しています。</p>
-      <% end %>
-    </details>
-  <% end %>
-</section>
+<%# ワンタップ使用の Turbo Stream がここを丸ごと差し替える (app/views/items/quick_uses/create.turbo_stream.erb) %>
+<div id="<%= dom_id(@item, :detail) %>">
+  <%= render "items/detail" %>
+</div>
 
 <section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="分類">
   <h2 class="font-bold text-slate-900">分類</h2>

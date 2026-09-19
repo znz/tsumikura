@@ -15,6 +15,36 @@ RSpec.describe "品目", type: :request do
       expect(rendered_list("品目一覧")).to include item.name
     end
 
+    # 1 タップで在庫を減らせることが最優先の UX 目標 (docs/spec/00-overview.md 2 節)
+    it "各行にワンタップの「使った」ボタンが出る" do
+      item = create(:item, name: "トイレットペーパー")
+
+      get items_path
+
+      expect(response.parsed_body.at("form[action='#{item_quick_use_path(item)}']")).to be_present
+      expect(response.parsed_body.at("li##{ActionView::RecordIdentifier.dom_id(item)}")).to be_present
+    end
+
+    # アーカイブ済みは日々使う品目ではないので、一覧から導線を出さない
+    it "アーカイブ済みの品目には「使った」ボタンを出さない" do
+      item = create(:item, :archived, name: "むかしの洗剤")
+
+      get items_path(status: "archived")
+
+      expect(rendered_list("品目一覧")).to include "むかしの洗剤"
+      expect(response.parsed_body.at("form[action='#{item_quick_use_path(item)}']")).to be_nil
+    end
+
+    # 用途を管理する品目はワンタップだと用途が付かないので、フォームへ誘導する
+    it "用途を管理する品目の「使った」は用途を選べるフォームへのリンクになる" do
+      item = create(:item, name: "単 3 電池", tracks_purposes: true)
+
+      get items_path
+
+      expect(response.parsed_body.at("form[action='#{item_quick_use_path(item)}']")).to be_nil
+      expect(response.parsed_body.at("a[href='#{new_item_usage_record_path(item)}']")).to be_present
+    end
+
     it "アーカイブ済みの品目は既定では出ない" do
       active = create(:item, name: "ティッシュ")
       archived = create(:item, :archived, name: "むかしの洗剤")
@@ -284,7 +314,7 @@ RSpec.describe "品目", type: :request do
 
       # 何年も使っている品目で、使い切ったロットの行が無限に伸びないようにする
       it "使い切ったロットは新しいものから決まった件数だけ出す" do
-        stub_const("ItemsController::DEPLETED_LOTS_LIMIT", 1)
+        stub_const("ItemDetails::DEPLETED_LOTS_LIMIT", 1)
         old = create(:lot, item: item, initial_quantity: 1, acquired_on: Date.current - 10,
           note: "ふるいロット")
         recent = create(:lot, item: item, initial_quantity: 1, note: "あたらしいロット")
@@ -307,7 +337,9 @@ RSpec.describe "品目", type: :request do
       end
 
       it "ロットが増えてもクエリ数は増えない (店舗を includes している)" do
-        create(:lot, item: item, store: create(:store))
+        # 店舗が 1 件だと「ロット一覧」と「最近の記録」の店舗の読み込みが同じ SQL になり、
+        # 2 本目がクエリキャッシュに当たって数えられない。基準は 2 件から始める
+        2.times { create(:lot, item: item, store: create(:store)) }
         get item_path(item) # ウォームアップ
 
         baseline = count_queries { get item_path(item) }
@@ -320,6 +352,167 @@ RSpec.describe "品目", type: :request do
         get item_path(item)
 
         expect(response.body).to include new_item_lot_path(item)
+      end
+
+      # 調整ロット (在庫不足の補填・棚卸) は画面から編集できない (LotsController は 404)
+      it "調整ロットには編集リンクを出さない" do
+        create(:lot, :adjustment, item: item, initial_quantity: 3)
+
+        get item_path(item)
+
+        expect(rendered_list("ロット一覧")).to include "調整"
+        expect(response.parsed_body.at("ul[aria-label='ロット一覧'] a")).to be_nil
+      end
+    end
+
+    describe "用途一覧" do
+      let(:item) { create(:item, name: "単 3 電池", unit: "本", tracks_purposes: true) }
+
+      def use(purpose, *days_ago)
+        days_ago.each do |ago|
+          create(:usage_record, item: item, item_purpose: purpose, used_on: Date.current - ago)
+        end
+      end
+
+      it "最終交換日と交換周期 (中央値) が出る" do
+        use(create(:item_purpose, item: item, name: "リモコン"), 90, 60, 30, 0)
+
+        get item_path(item)
+
+        purposes = rendered_list("用途一覧")
+        expect(purposes).to include "リモコン"
+        expect(purposes).to include I18n.l(Date.current)
+        expect(purposes).to include "約 30 日"
+      end
+
+      it "記録が 1 件の用途には最終交換日だけが出る" do
+        use(create(:item_purpose, item: item, name: "時計"), 5)
+
+        get item_path(item)
+
+        expect(rendered_list("用途一覧")).to include I18n.l(Date.current - 5)
+        expect(rendered_list("用途一覧")).not_to include "交換周期: 約"
+      end
+
+      it "まだ使っていない用途はその旨を出す" do
+        create(:item_purpose, item: item, name: "リモコン")
+
+        get item_path(item)
+
+        expect(rendered_list("用途一覧")).to include "まだ使用の記録がありません"
+      end
+
+      it "アーカイブ済みの用途は出ない" do
+        create(:item_purpose, item: item, name: "リモコン")
+        create(:item_purpose, :archived, item: item, name: "むかしの用途")
+
+        get item_path(item)
+
+        expect(rendered_list("用途一覧")).not_to include "むかしの用途"
+      end
+
+      it "用途を管理しない品目には用途の欄を出さない" do
+        get item_path(create(:item, name: "トイレットペーパー"))
+
+        expect(response.parsed_body.at("section[aria-label='用途']")).to be_nil
+      end
+
+      it "用途が増えてもクエリ数は増えない (usage_records を includes)" do
+        use(create(:item_purpose, item: item, name: "リモコン"), 30, 0)
+        before_count = count_queries { get item_path(item) }
+
+        use(create(:item_purpose, item: item, name: "時計"), 20, 0)
+
+        expect(count_queries { get item_path(item) }).to eq before_count
+      end
+    end
+
+    describe "最近の記録" do
+      let(:item) { create(:item, name: "トイレットペーパー", unit: "ロール") }
+
+      it "使用と購入が新しい順に並ぶ" do
+        create(:lot, item: item, initial_quantity: 12, acquired_on: Date.current - 3)
+        create(:usage_record, item: item, quantity: 2, used_on: Date.current)
+
+        get item_path(item)
+
+        records = rendered_list("最近の記録一覧")
+        expect(records).to include "使った 2 ロール"
+        expect(records).to include "購入 12 ロール"
+        expect(records.index("使った")).to be < records.index("購入")
+      end
+
+      it "各行から編集できる" do
+        lot = create(:lot, item: item, initial_quantity: 12)
+        usage = create(:usage_record, item: item, quantity: 2)
+
+        get item_path(item)
+
+        expect(response.body).to include edit_usage_record_path(usage)
+        expect(response.body).to include edit_lot_path(lot)
+      end
+
+      it "用途も出る" do
+        purposes_item = create(:item, name: "単 3 電池", unit: "本", tracks_purposes: true)
+        purpose = create(:item_purpose, item: purposes_item, name: "リモコン")
+        create(:usage_record, item: purposes_item, item_purpose: purpose)
+
+        get item_path(purposes_item)
+
+        expect(rendered_list("最近の記録一覧")).to include "リモコン"
+      end
+
+      # 在庫不足の補填で作られる調整ロットはユーザーの操作ではない
+      it "補填の調整ロットは購入として出さない" do
+        create(:usage_record, item: item, quantity: 2)
+
+        get item_path(item)
+
+        expect(rendered_list("最近の記録一覧")).not_to include "調整"
+      end
+
+      it "記録が無ければその旨を出す" do
+        get item_path(item)
+
+        expect(response.parsed_body.at("section[aria-label='最近の記録']").text)
+          .to include "まだ記録がありません"
+      end
+
+      # 行ごとに用途と店舗を出すので、includes しないと記録の数だけクエリが増える
+      it "記録が増えてもクエリ数は増えない (用途と店舗を includes)" do
+        purposes_item = create(:item, tracks_purposes: true)
+        purpose = create(:item_purpose, item: purposes_item, name: "リモコン")
+        # 店舗が 1 件だとクエリキャッシュに当たって基準が 1 本少なくなる (上のロット一覧の spec と同じ)
+        2.times { create(:lot, item: purposes_item, initial_quantity: 20, store: create(:store)) }
+        create(:usage_record, item: purposes_item, item_purpose: purpose)
+        get item_path(purposes_item) # ウォームアップ
+
+        baseline = count_queries { get item_path(purposes_item) }
+        3.times do
+          create(:lot, item: purposes_item, initial_quantity: 2, store: create(:store))
+          create(:usage_record, item: purposes_item, item_purpose: purpose)
+        end
+
+        expect(count_queries { get item_path(purposes_item) }).to eq baseline
+      end
+    end
+
+    describe "「使った」ボタン" do
+      it "用途を管理しない品目にはワンタップの「使った」が出る" do
+        item = create(:item, name: "トイレットペーパー")
+
+        get item_path(item)
+
+        expect(response.parsed_body.at("form[action='#{item_quick_use_path(item)}']")).to be_present
+      end
+
+      it "用途を管理する品目は用途を選べるフォームだけを出す" do
+        item = create(:item, name: "単 3 電池", tracks_purposes: true)
+
+        get item_path(item)
+
+        expect(response.parsed_body.at("form[action='#{item_quick_use_path(item)}']")).to be_nil
+        expect(response.body).to include new_item_usage_record_path(item)
       end
     end
 

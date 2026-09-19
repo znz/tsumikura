@@ -16,8 +16,10 @@ ja:
       storage_location: 保管場所
       store: 店舗
       item: 品目
+      item_purpose: 用途
       lot: 購入の記録
       stock_movement: 在庫の記録
+      usage_record: 使用の記録
     attributes:
       category:
         name: 名前
@@ -51,6 +53,22 @@ ja:
         current_quantity: 在庫数
         tracking_started_on: 記録開始日
         last_consumed_on: 最終消費日
+      item_purpose:
+        item: 品目
+        name: 名前
+        default_quantity: 既定の数量
+        position: 並び順
+        archived_at: アーカイブ
+      usage_record:
+        item: 品目
+        item_purpose: 用途
+        item_purpose_id: 用途
+        quantity: 数量
+        used_on: 使用日
+        # DB には持たない (引き当て先の手動指定。既定は FEFO の自動引き当て)
+        lot_id: ロット
+        user: 記録者
+        note: メモ
       lot:
         item: 品目
         kind: 種別
@@ -113,6 +131,18 @@ ja:
             base:
               # 棚卸のマイナス差分を消すと、確定済みの棚卸の記録と消費ペースまで壊れる
               consumed: 使用・廃棄・棚卸の記録があるロットは削除できません
+        item_purpose:
+          attributes:
+            base:
+              # 用途を消すと、その用途で交換した履歴と交換周期まで失われる
+              used: 使用の記録がある用途は削除できません (アーカイブしてください)
+        usage_record:
+          attributes:
+            used_on:
+              # 消費イベントが必ず今日以前にあることを予測が前提にしている
+              future: に未来の日付は指定できません
+            item_purpose:
+              mismatched_item: がこの品目の用途ではありません
         stock_movement:
           attributes:
             occurred_on:

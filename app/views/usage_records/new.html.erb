@@ -1,0 +1,13 @@
+<% content_for :title, "使用を記録" %>
+
+<p class="text-sm">
+  <%= link_to "← #{@item.name}", item_path(@item), class: "text-blue-600 underline" %>
+</p>
+
+<h1 class="mt-2 text-2xl font-bold text-slate-900">使用を記録</h1>
+<p class="<%= hint_classes %>">
+  「<%= @item.name %>」の在庫が減ります (現在 <%= @item.current_quantity %> <%= @item.unit %>)。
+</p>
+
+<%= render "form", item: @item, usage_record: @usage_record, purposes: @purposes, lots: @lots,
+      submit_label: "記録する" %>

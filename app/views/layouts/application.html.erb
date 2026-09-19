@@ -35,5 +35,19 @@
 
     <%# 未ログイン (ログイン画面) にはタブを出さない %>
     <%= render "layouts/tab_bar" if Current.user %>
+
+    <%#
+      トーストの置き場所 (docs/spec/03-screens.md 画面 4b)。
+      ワンタップ使用は Turbo Stream でここに append し、JS が無いときは
+      リダイレクト後に flash[:toast] から描く。どちらでも同じ部分テンプレートを使う。
+    %>
+    <%# 読み上げは常設のこの器で拾う (トースト自体は後から差し込まれるため) %>
+    <div id="toasts" role="status" aria-live="polite"
+         class="pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
+      <% if flash[:toast].present? %>
+        <%= render "layouts/toast", message: flash[:toast],
+              usage_record_id: flash[:undo_usage_record_id] %>
+      <% end %>
+    </div>
   </body>
 </html>

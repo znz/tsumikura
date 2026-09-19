@@ -562,44 +562,102 @@ rake タスク (spec/tasks/stock_spec.rb)
 
 **作業**
 
-- `usage_records` / `item_purposes` の migration とモデル
-- `Stock::Allocator` (FEFO + 在庫不足時の自動調整ロット)
-- `Stock::RecordUsage` / `Stock::ReviseUsage` / `Stock::DeleteMovement`
-- `UsageRecordsController`、`ItemsController#quick_use` (Turbo Stream + 取り消しトースト)
-- 用途別の交換履歴と交換周期 (中央値) の表示
-- ロットの削除・数量編集の制限
+- `usage_records` / `item_purposes` の migration とモデル (`stock_movements.usage_record_id` に `add_foreign_key`)
+- `Stock::Allocator` (FEFO + 在庫不足時の自動調整ロット) と `Stock::UsageMovements` (movement の作成・片づけ)
+- `Stock::RecordUsage` / `Stock::ReviseUsage` / `Stock::DeleteMovement` (いずれも `call!` つき)
+- `UsageRecordsController`、`Items::QuickUsesController` (Turbo Stream + 取り消しトースト)。
+  「1 リソース = 1 コントローラ」に合わせて `ItemsController#quick_use` にはしない
+- `ItemPurposesController` + `ItemPurposes::PositionsController` / `ItemPurposes::ArchivesController`。
+  `Positioned` を品目ごとのスコープで使えるよう `positioned_siblings` を足す
+- 品目一覧・詳細の「使った」、品目詳細の用途一覧 (最終交換日・交換周期) と「最近の記録」
+- トーストの自動消去・数量の +/−・日付の「今日 / 昨日」の Stimulus (いずれも JS 無しで動く)
+- `stock:verify` に使用記録と movement のずれの検査を追加
+- ロットの削除・数量編集の制限 (Phase 7 のガード) が実際の使用記録で効くことの確認
 
 **TDD TODO**
 
 ```
-- [ ] Stock::Allocator は期限が近いロットから引き当てる
-- [ ] Stock::Allocator は期限 nil のロットを期限つきロットの後に引き当てる
-- [ ] Stock::Allocator は期限切れロットを最後に引き当てる
-- [ ] 期限が同じなら購入が古いロットから引き当てる
-- [ ] 在庫 5 のロットに対して 3 使うと、そのロットから 3 だけ引かれる
-- [ ] ロット A に 2・ロット B に 5 あるとき 4 使うと、A から 2・B から 2 に分割される
-- [ ] 分割されても UsageRecord は 1 件、StockMovement は 2 件
-- [ ] 在庫 2 に対して 3 使うと kind: adjustment のロットが 1 件作られ、不足 1 が補われる
-- [ ] 使用記録を作ると item.last_consumed_on が used_on になる
-- [ ] 過去日 (3 日前) の使用記録を作っても現在庫は正しく減る
-- [ ] 未来の日付の使用記録は保存できない
-- [ ] 最新の使用記録を削除すると item.last_consumed_on は 1 つ前の消費日に戻る
-- [ ] 使用記録を削除すると在庫が戻り、分割された StockMovement もすべて消える
-- [ ] 使用済みのロットは削除できない (バリデーションエラー)
-- [ ] ロットの数量を、既に使われた数より小さくは編集できない
-- [ ] 用途を指定した使用記録は item_purpose_id を持つ
-- [ ] ItemPurpose#replacement_interval_days は used_on の差分の中央値を返す
-- [ ] 使用記録が 1 件の用途は interval を返さず、最終使用日だけを返す
+Stock::Allocator (spec/models/stock/allocator_spec.rb)
+- [x] Stock::Allocator は期限が近いロットから引き当てる
+- [x] Stock::Allocator は期限 nil のロットを期限つきロットの後に引き当てる
+- [x] Stock::Allocator は期限切れロットを最後に引き当てる (今日が期限ならまだ期限切れではない)
+- [x] 期限が同じなら購入が古いロットから引き当てる
+- [x] 残 0 のロットは引き当てに使わない / 他の品目のロットには触らない
+- [x] 在庫 5 のロットに対して 3 使うと、そのロットから 3 だけ引かれる
+- [x] ロット A に 2・ロット B に 5 あるとき 4 使うと、A から 2・B から 2 に分割される
+- [x] 在庫 2 に対して 3 使うと kind: adjustment のロットが 1 件作られ、不足 1 が補われる
+- [x] 補填の調整ロットは期限も価格も持たず、日付は使用日になる
+- [x] ロットを手動指定すると、そのロットから先に引く (足りない分は FEFO → 補填の順)
+- [x] 先読み済みのロットではなく、その場で読んだ残数で引き当てる
+
+使用記録 (spec/models/stock/{record_usage,revise_usage,delete_movement}_spec.rb)
+- [x] 分割されても UsageRecord は 1 件、StockMovement は 2 件
+- [x] 使用記録を作ると item.last_consumed_on が used_on になる
+- [x] 過去日 (3 日前) の使用記録を作っても現在庫は正しく減る
+- [x] 未来の日付の使用記録は保存できない (movement も調整ロットも作られない)
+- [x] 補填の入庫 (正の adjustment) は消費に数えない
+- [x] 最新の使用記録を削除すると item.last_consumed_on は 1 つ前の消費日に戻る
+- [x] 使用記録を削除すると在庫が戻り、分割された StockMovement もすべて消える
+- [x] 使用記録を編集すると movement を作り直し、数量・日付・用途・ロットが追随する
+- [x] 各サービスは最初の書き込みより前に品目を行ロックする (FOR UPDATE の位置を SQL で確認)
+- [x] ロックの前に読んだ古い在庫では引き当てない / 古い値で上書きしない
+- [x] 別の画面で先に削除されていたら RecordNotFound になる
+- [x] 用途を指定した使用記録は item_purpose_id を持つ (他の品目の用途・ロットは指定できない)
+- [x] 使用済みのロットは削除できない / 既に使われた数より小さい数量には編集できない
+      (Phase 7 のガードが実際の使用記録で効いている)
+
+用途 (spec/models/item_purpose_spec.rb)
+- [x] ItemPurpose#replacement_interval_days は used_on の差分の中央値を返す
+      (平均ではない / 偶数個なら中央 2 つの平均 / 同じ日の記録は 1 回と数える)
+- [x] 使用記録が 1 件の用途は interval を返さず、最終使用日だけを返す
+- [x] name は品目の中で一意。position は品目ごとに 1 から振られ、並べ替えも品目の中で閉じる
+- [x] アーカイブ済みの用途は並べ替えの対象にならず、解除すると末尾に並ぶ
+      (採番はアーカイブ済みも含めた末尾から。position が重ならない)
+- [x] 使用記録がある用途は削除できず、アーカイブで一覧から外す (外部キーも restrict)
+
+引き当て直しと既定値 (Fable の査読を反映)
+- [x] メモ・用途だけの編集ではロット別の残数が変わらない (元のロットを優先して引き直す)
+- [x] 手動で指定した記録を数量だけ編集しても、指定したロットが優先される
+- [x] 自分が引いていた分を戻してから引き当てる (途中の再計算を省くと要らない補填が出る)
+- [x] 在庫を超えて増やすと補填が増え、調整ロットは 1 件のまま作り直される
+- [x] 数量を空で送ると、選んだ用途の既定数量 (用途なしなら 1) で補う。0 は 422 のまま
+- [x] 指定したロットが使い切られていても記録は成功し、その旨を知らせる
+      (他の品目のロットは今までどおり 422)
+- [x] usage_records ⇔ stock_movements / item_purposes の item_id は複合外部キーで守る
+- [x] stock:verify は「使用記録に紐づかない使用の記録」「使用記録に紐づく movement の種別」
+      「補填の調整ロットの残り」「使用記録と違う品目を指す記録」も検出する
+
+画面 (spec/requests/{usage_records,item_purposes,items}_spec.rb,
+      spec/requests/items/quick_uses_spec.rb, spec/system/usage_records_spec.rb)
+- [x] ワンタップ使用は数量 1・今日・FEFO・用途なしで記録される
+- [x] Turbo Stream で一覧の行と品目詳細を更新し、取り消し付きトーストを足す
+- [x] JS が無くても記録でき、押した画面に戻って flash のトーストに取り消しが出る
+- [x] 在庫不足で補填したときは「n ロール を調整しました」を伝える
+- [x] 用途を管理する品目の一覧の「使った」は、用途を選べるフォームへのリンクになる
+- [x] 品目詳細に用途一覧 (最終交換日・交換周期) と最近の記録 (使用と購入・編集 / 削除) が出る
+- [x] 用途の CRUD・並べ替え・アーカイブができ、他の品目の用途は触れない (404)
+- [x] 壊れた入力 (未来日・0・上限超え・他品目の用途 / ロット) は 422、キー無しは 400 (500 にしない)
+- [x] 品目・記録者・並び順・アーカイブはフォームから変更できない (mass assignment の遮断)
+- [x] アーカイブ済みの品目には「使った」ボタンを出さない
+- [x] すでに取り消された記録の「取り消し」は 404 にせず、その旨を知らせて戻る
+- [x] 編集画面 (検証エラーでの再描画を含む) から削除したときは品目詳細に戻る
+- [x] 編集フォームのロット選択の既定は「変更しない」。アーカイブ済みの用途も選択肢に残る
+- [x] 表に使用記録と用途の全ルート (15 種) を足し、未ログインではログイン画面にリダイレクトされる
+- [ ] 実ブラウザではワンタップでトーストが出て 8 秒で消え、取り消しで在庫が戻る
+      (js: true。ローカルには Chrome が無く skip されるので、CI で初めて実行される)
+- [ ] 実ブラウザでは数量の +/− と日付の「昨日」ボタンが使える
+      (js: true。ローカルには Chrome が無く skip されるので、CI で初めて実行される)
 
 Phase 7 からの申し送り (docs/spec/01-domain-model.md 5 節)
-- [ ] usage_records を作ったら stock_movements.usage_record_id に add_foreign_key する
-- [ ] Stock::Allocator は item.lock! の「あと」に lots.available.fefo を読む
+- [x] usage_records を作ったら stock_movements.usage_record_id に add_foreign_key する
+- [x] Stock::Allocator は item.lock! の「あと」に lots.available.fefo を読む
       (ロックの前に読んだロットで引き当てない)
-- [ ] 在庫不足の補填で作った調整ロットは、使用記録の削除・編集で補填の +movement ごと消える
+- [x] 在庫不足の補填で作った調整ロットは、使用記録の削除・編集で補填の +movement ごと消える
       (+movement にも usage_record_id を持たせ、movement が無くなった調整ロットは削除する)
-- [ ] 入れ子で呼ぶサービスには call! (例外を上げる) を用意する
+- [x] 入れ子で呼ぶサービスには call! (例外を上げる) を用意する
       (内側の ActiveRecord::Rollback は内側の transaction に握りつぶされ、外側はコミットされる)
-- [ ] stock:verify に「usage_record の quantity == 紐づく movements の合計」を足す
+- [x] stock:verify に「usage_record の quantity == 紐づく movements の合計」を足す
+      (補填の入庫は数えない。used_on と occurred_on のずれも検出する)
 ```
 
 **動作確認**: スマホ幅で品目一覧の「使った」を押すと在庫が 1 減り、トーストの「取り消し」で戻る。
@@ -633,12 +691,23 @@ Phase 7 からの申し送り (docs/spec/01-domain-model.md 5 節)
 - [ ] 棚卸のマイナス差分は item.last_consumed_on を更新する
 - [ ] 廃棄は item.last_consumed_on を更新しない
 
-Phase 7 からの申し送り (docs/spec/01-domain-model.md 5 節)
+Phase 7 / 8 からの申し送り (docs/spec/01-domain-model.md 5 節)
 - [ ] stock_take_entries を作ったら stock_movements.stock_take_entry_id に add_foreign_key する
+      (usage_record_id と同じく on_delete は付けない)
 - [ ] 棚卸の確定で複数の品目をロックするときは id の昇順で lock! する (デッドロック防止)
 - [ ] 棚卸のマイナス差分が紐づくロットは削除できない (Phase 7 のガードが効いていること)
 - [ ] 既存ロットに正の adjustment を付ける設計にするなら、Stock::ReviseLot の
       「入庫 = 最初の正の movement」という前提と数量の検証を作り直す
+- [ ] 棚卸のプラス差分で作る調整ロットには、使用記録に紐づかない入庫 movement を必ず持たせる
+      (持たせないと Stock::UsageMovements#discard! が「空の調整ロット」として消してしまう)
+- [ ] 棚卸のマイナス差分の引き当ても Stock::Allocator を使う。ただし Allocator は不足分を
+      必ず補填する (調整ロットを作る) ので、compensate: false のオプションが要る
+- [ ] 廃棄の削除を Stock::DeleteMovement に足すときは、引数の型で分岐せず
+      共通部分 (Stock::UsageMovements) を一般化するか別サービスに分ける
+- [ ] flash[:undo_usage_record_id] とトーストの「取り消し」は使用記録専用。
+      廃棄の取り消しにも使うなら undo_path を渡す形に一般化する
+- [ ] 使用記録に紐づかない kind: usage の movement を作らない (stock:verify が検出する)
+- [ ] 判断 1 の「直近の棚卸日より前の日付です」の警告を、使用記録と購入のフォームに足す
 ```
 
 **動作確認**: 保管場所を選んで数件を数え、確定すると在庫が実数に一致する。
@@ -663,6 +732,9 @@ Phase 7 からの申し送り (docs/spec/01-domain-model.md 5 節)
 ```
 - [ ] SnapshotBuilder は消費の定義に StockMovement.consumption スコープを使う
       (「使用と負の調整」の定義を Stock::Recalculator と 1 か所にそろえる)
+- [ ] u (usage_records.quantity の中央値) と消費量 (stock_movements) は別のテーブルから数える。
+      一致は rake stock:verify の「使用の数量」の検査が前提 (Phase 8 からの申し送り)
+- [ ] 在庫不足を補填した使用も消費に数える (補填の入庫は正の adjustment なので分子に入らない)
 - [ ] SnapshotBuilder は usage と負の adjustment を消費量に含める
 - [ ] SnapshotBuilder は disposal を消費量に含めない
 - [ ] SnapshotBuilder は purchase と正の adjustment を消費量に含めない

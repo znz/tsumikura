@@ -1,0 +1,30 @@
+<%# locals: (item:) %>
+<%#
+  品目一覧の 1 行 (docs/spec/03-screens.md 画面 2)。
+  ワンタップ使用の Turbo Stream がこの li を丸ごと差し替えるので、id を付けておく。
+  「使った」ボタンはリンクの中に入れられない (入れ子のフォームになる) ので横に並べる。
+%>
+<li id="<%= dom_id(item) %>" class="flex items-center gap-2 pr-3">
+  <%= link_to item_path(item), class: "flex min-h-14 flex-1 items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50" do %>
+    <span class="min-w-0">
+      <span class="block truncate font-medium text-slate-900">
+        <%= item.name %>
+        <% if item.favorite? %>
+          <span class="text-amber-500" role="img" aria-label="お気に入り">★</span>
+        <% end %>
+      </span>
+      <span class="block truncate text-sm text-slate-500">
+        <%= [ item.category&.name, item.storage_location&.name ].compact_blank.join(" / ").presence || "分類なし" %>
+        <% if item.archived? %>
+          <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">アーカイブ済み</span>
+        <% end %>
+      </span>
+    </span>
+    <span class="shrink-0 text-right">
+      <span class="block text-lg font-bold text-slate-900"><%= item.current_quantity %></span>
+      <span class="block text-xs text-slate-500"><%= item.unit %></span>
+    </span>
+  <% end %>
+
+  <%= render "items/use_button", item: item %>
+</li>

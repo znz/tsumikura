@@ -12,10 +12,13 @@ class Item < ApplicationRecord
   belongs_to :storage_location, optional: true
 
   # 品目は物理削除しない (アーカイブする) が、消したときに在庫の記録だけが残らないようにする。
-  # stock_movements を先に宣言するのは、ロットより先に movement を消すため
-  # (逆だと Lot#ensure_not_consumed に止められて中途半端に壊れる)
+  # 宣言の順がそのまま削除の順になるので、参照する側から先に消す:
+  #   movement → ロット (逆だと Lot#ensure_not_consumed に止められて中途半端に壊れる)
+  #   使用記録 → 用途 (逆だと ItemPurpose#ensure_not_used と外部キーに止められる)
   has_many :stock_movements, dependent: :destroy
   has_many :lots, dependent: :destroy
+  has_many :usage_records, dependent: :destroy
+  has_many :item_purposes, -> { order(:position, :id) }, dependent: :destroy
 
   # prefix は必須。付けないと none が AR の Item.none (空スコープ) と衝突し、
   # Rails がクラスロード時に ArgumentError を出す。

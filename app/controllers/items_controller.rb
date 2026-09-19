@@ -1,4 +1,6 @@
 class ItemsController < ApplicationController
+  include ItemDetails
+
   # 一覧の状態フィルタ。既定はアーカイブ済みを隠した「有効な品目だけ」
   STATUSES = %w[ active archived all ].freeze
   DEFAULT_STATUS = "active".freeze
@@ -17,18 +19,10 @@ class ItemsController < ApplicationController
     @items = filtered_items.includes(:category, :storage_location).ordered
   end
 
-  # 使い切ったロットは畳んで表示するので、一覧に出すのは直近の分だけにする
-  # (何年も使っている品目で行が無限に伸びないように)
-  DEPLETED_LOTS_LIMIT = 20
-
-  # ロット一覧は期限が近い順 (FEFO)。store を includes しないと行ごとに店舗を引いてしまう
+  # 在庫・ロット・用途・最近の記録は ItemDetails が読む
+  # (ワンタップ使用の Turbo Stream 応答と同じ描画を使うため)
   def show
-    @available_lots = @item.lots.available.includes(:store).fefo.to_a
-    @depleted_lots_count = @item.lots.depleted.count
-    @depleted_lots = @item.lots.depleted.includes(:store).recent_first.limit(DEPLETED_LOTS_LIMIT).to_a
-    # 「最近の単価」は価格のある直近のロットだけで計算する (docs/spec/01-domain-model.md 判断 6)
-    @average_unit_price_yen =
-      Lot.average_unit_price_yen(@item.lots.priced.recent_first.limit(Lot::RECENT_PRICED_LOTS))
+    load_item_detail(@item)
   end
 
   def new

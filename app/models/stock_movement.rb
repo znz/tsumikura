@@ -4,6 +4,9 @@ class StockMovement < ApplicationRecord
   belongs_to :item
   belongs_to :lot
   belongs_to :user
+  # 「使った」操作 1 回に紐づく行。FEFO の分割で複数になるほか、在庫不足を補填した
+  # 調整ロットの入庫 (正の adjustment) にも持たせる。記録を消すときに一緒に片づけるため
+  belongs_to :usage_record, optional: true
 
   # prefix は必須。付けないと adjustment / usage などが AR のスコープ名と紛らわしくなる。
   # validate: true なので未知の値は例外ではなく検証エラーになる

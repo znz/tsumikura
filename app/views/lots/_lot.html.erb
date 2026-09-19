@@ -26,5 +26,8 @@
       <p class="mt-1 text-sm text-slate-500"><%= lot.note %></p>
     <% end %>
   </div>
-  <%= link_to "編集", edit_lot_path(lot), class: secondary_button_classes("shrink-0") %>
+  <%# 調整ロットは画面から編集できない (元になった使用記録・棚卸の側から直す) %>
+  <% if lot.recordable? %>
+    <%= link_to "編集", edit_lot_path(lot), class: secondary_button_classes("shrink-0") %>
+  <% end %>
 </li>

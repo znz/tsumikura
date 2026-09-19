@@ -131,6 +131,102 @@ RSpec.describe "stock タスク", type: :task do
       expect(result.output).to include "品目"
     end
 
+    # usage_records.quantity と、紐づく出庫 movement の合計は二重管理になる。
+    # ずれると「使った数」と在庫の減り方が食い違い、どちらが正か分からなくなる
+    it "使用記録の数量と movement の合計のずれを検出する" do
+      create(:lot, item: item, initial_quantity: 12)
+      usage = create(:usage_record, item: item, quantity: 3)
+      usage.update_column(:quantity, 9)
+
+      result = run_rake_task("stock:verify")
+
+      expect(result.status).to eq 1
+      expect(result.output).to include "使用の数量"
+      expect(result.output).to include "トイレットペーパー"
+    end
+
+    it "使用記録の日付と movement の日付のずれを検出する" do
+      create(:lot, item: item, initial_quantity: 12)
+      usage = create(:usage_record, item: item, quantity: 3)
+      usage.stock_movements.sole.update_column(:occurred_on, Date.current - 5)
+
+      result = run_rake_task("stock:verify")
+
+      expect(result.status).to eq 1
+      expect(result.output).to include "使用の日付"
+    end
+
+    it "movement が 1 件も無い使用記録を検出する" do
+      create(:lot, item: item, initial_quantity: 12)
+      create(:usage_record, item: item, quantity: 3, with_movements: false)
+
+      result = run_rake_task("stock:verify")
+
+      expect(result.status).to eq 1
+      expect(result.output).to include "使用の数量"
+    end
+
+    # 在庫不足を補填した入庫 (正の adjustment) は「使った数」ではない
+    it "在庫不足を補填した使用記録は差異にならない" do
+      create(:usage_record, item: item, quantity: 3)
+
+      expect(run_rake_task("stock:verify")).to be_ok
+    end
+
+    # 使用の movement が使用記録に紐づいていないと、どの操作で減ったのか分からず、
+    # 使用記録の側からは編集も削除もできない行になる
+    it "使用記録に紐づかない使用の記録を検出する" do
+      lot = create(:lot, item: item, initial_quantity: 12)
+      create(:stock_movement, lot: lot, kind: :usage, quantity: -1)
+      Stock::Recalculator.call(item)
+
+      result = run_rake_task("stock:verify")
+
+      expect(result.status).to eq 1
+      expect(result.output).to include "使用記録"
+      expect(result.output).to include "トイレットペーパー"
+    end
+
+    it "使用記録に紐づく movement の種別の不整合を検出する" do
+      create(:lot, item: item, initial_quantity: 12)
+      usage = create(:usage_record, item: item, quantity: 2)
+      usage.stock_movements.sole.update_column(:kind, StockMovement.kinds[:disposal])
+
+      result = run_rake_task("stock:verify")
+
+      expect(result.status).to eq 1
+      expect(result.output).to include "使用記録に紐づく種別"
+    end
+
+    # 補填の調整ロットは、補填した分をそのまま使い切るので合計は必ず 0 になる
+    it "補填の調整ロットに実在しない在庫が残っていると検出する" do
+      usage = create(:usage_record, item: item, quantity: 3)
+      usage.stock_movements.where(quantity: ...0).sole.delete
+      Stock::Recalculator.call(item)
+
+      result = run_rake_task("stock:verify")
+
+      expect(result.status).to eq 1
+      expect(result.output).to include "補填の調整ロット"
+    end
+
+    # 本来は (usage_record_id, item_id) の複合外部キーが止めるので、
+    # 検査の側を確かめるためにこの spec の中だけ外部キーを外す
+    it "使用記録と違う品目を指す記録を検出する" do
+      create(:lot, item: item, initial_quantity: 12)
+      usage = create(:usage_record, item: item, quantity: 2)
+      other = create(:item, name: "ティッシュ")
+      connection = ActiveRecord::Base.lease_connection
+      connection.remove_foreign_key :stock_movements, column: [ :lot_id, :item_id ]
+      connection.remove_foreign_key :stock_movements, column: [ :usage_record_id, :item_id ]
+      usage.stock_movements.sole.update_column(:item_id, other.id)
+
+      result = run_rake_task("stock:verify")
+
+      expect(result.status).to eq 1
+      expect(result.output).to include "使用記録の品目"
+    end
+
     it "ずれていない品目は出力に並ばない" do
       create(:lot, item: item, initial_quantity: 12)
       broken = create(:item, name: "ティッシュ")

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_20_000006) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_000008) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -21,6 +21,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000006) do
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_categories_on_name", unique: true
     t.index ["position"], name: "index_categories_on_position"
+  end
+
+  create_table "item_purposes", force: :cascade do |t|
+    t.datetime "archived_at"
+    t.datetime "created_at", null: false
+    t.integer "default_quantity", default: 1, null: false
+    t.bigint "item_id", null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["id", "item_id"], name: "index_item_purposes_on_id_and_item_id", unique: true
+    t.index ["item_id", "name"], name: "index_item_purposes_on_item_id_and_name", unique: true
+    t.index ["item_id", "position"], name: "index_item_purposes_on_item_id_and_position"
+    t.check_constraint "default_quantity > 0", name: "item_purposes_default_quantity_positive"
   end
 
   create_table "items", force: :cascade do |t|
@@ -293,6 +307,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000006) do
     t.index ["name"], name: "index_stores_on_name", unique: true
   end
 
+  create_table "usage_records", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "item_id", null: false
+    t.bigint "item_purpose_id"
+    t.text "note"
+    t.integer "quantity", null: false
+    t.datetime "updated_at", null: false
+    t.date "used_on", null: false
+    t.bigint "user_id", null: false
+    t.index ["id", "item_id"], name: "index_usage_records_on_id_and_item_id", unique: true
+    t.index ["item_id", "used_on"], name: "index_usage_records_on_item_id_and_used_on"
+    t.index ["item_purpose_id", "used_on"], name: "index_usage_records_on_item_purpose_id_and_used_on"
+    t.index ["used_on"], name: "index_usage_records_on_used_on"
+    t.index ["user_id"], name: "index_usage_records_on_user_id"
+    t.check_constraint "quantity > 0", name: "usage_records_quantity_positive"
+  end
+
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "deactivated_at"
@@ -306,6 +337,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000006) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  add_foreign_key "item_purposes", "items"
   add_foreign_key "items", "categories", on_delete: :nullify
   add_foreign_key "items", "storage_locations", on_delete: :nullify
   add_foreign_key "lots", "items"
@@ -322,5 +354,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000006) do
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "stock_movements", "items"
   add_foreign_key "stock_movements", "lots", column: ["lot_id", "item_id"], primary_key: ["id", "item_id"]
+  add_foreign_key "stock_movements", "usage_records", column: ["usage_record_id", "item_id"], primary_key: ["id", "item_id"]
   add_foreign_key "stock_movements", "users", on_delete: :restrict
+  add_foreign_key "usage_records", "item_purposes", column: ["item_purpose_id", "item_id"], primary_key: ["id", "item_id"], on_delete: :restrict
+  add_foreign_key "usage_records", "items"
+  add_foreign_key "usage_records", "users", on_delete: :restrict
 end
