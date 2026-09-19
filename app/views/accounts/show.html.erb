@@ -4,30 +4,19 @@
   <h2 class="font-bold text-slate-900">表示名とメールアドレス</h2>
 
   <%= form_with model: @user, url: account_path, method: :patch, class: "mt-4 space-y-5" do |form| %>
-    <% if @user.errors.any? %>
-      <div class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-        <ul class="list-inside list-disc">
-          <% @user.errors.full_messages.each do |message| %>
-            <li><%= message %></li>
-          <% end %>
-        </ul>
-      </div>
-    <% end %>
+    <%= render "form_errors", record: @user %>
 
     <div>
-      <%= form.label :name, class: "block text-sm font-medium text-slate-700" %>
-      <%= form.text_field :name, required: true,
-            class: "mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600" %>
+      <%= form.label :name, class: label_classes %>
+      <%= form.text_field :name, required: true, class: field_classes %>
     </div>
 
     <div>
-      <%= form.label :email_address, class: "block text-sm font-medium text-slate-700" %>
-      <%= form.email_field :email_address, required: true, autocomplete: "username",
-            class: "mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600" %>
+      <%= form.label :email_address, class: label_classes %>
+      <%= form.email_field :email_address, required: true, autocomplete: "username", class: field_classes %>
     </div>
 
-    <%= form.submit "保存",
-          class: "min-h-11 w-full cursor-pointer rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-500" %>
+    <%= form.submit "保存", class: primary_button_classes %>
   <% end %>
 </section>
 
@@ -36,26 +25,25 @@
 
   <%= form_with url: account_password_path, method: :patch, class: "mt-4 space-y-5" do |form| %>
     <div>
-      <%= form.label :current_password, "現在のパスワード", class: "block text-sm font-medium text-slate-700" %>
+      <%= form.label :current_password, "現在のパスワード", class: label_classes %>
       <%= form.password_field :current_password, required: true, autocomplete: "current-password", maxlength: 72,
-            class: "mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600" %>
+            class: field_classes %>
     </div>
 
     <div>
-      <%= form.label :password, "新しいパスワード", class: "block text-sm font-medium text-slate-700" %>
+      <%= form.label :password, "新しいパスワード", class: label_classes %>
       <%= form.password_field :password, required: true, autocomplete: "new-password", maxlength: 72,
-            class: "mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600" %>
-      <p class="mt-1 text-sm text-slate-500"><%= User::MINIMUM_PASSWORD_LENGTH %> 文字以上</p>
+            class: field_classes %>
+      <p class="<%= hint_classes %>"><%= User::MINIMUM_PASSWORD_LENGTH %> 文字以上</p>
     </div>
 
     <div>
-      <%= form.label :password_confirmation, "新しいパスワード (確認)", class: "block text-sm font-medium text-slate-700" %>
+      <%= form.label :password_confirmation, "新しいパスワード (確認)", class: label_classes %>
       <%= form.password_field :password_confirmation, required: true, autocomplete: "new-password", maxlength: 72,
-            class: "mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600" %>
+            class: field_classes %>
     </div>
 
-    <%= form.submit "パスワードを変更",
-          class: "min-h-11 w-full cursor-pointer rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-500" %>
+    <%= form.submit "パスワードを変更", class: primary_button_classes %>
   <% end %>
 </section>
 
@@ -78,11 +66,11 @@
         </div>
 
         <%= button_to "ログアウト", account_session_path(login_session), method: :delete,
-              class: "min-h-11 shrink-0 rounded-lg border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50" %>
+              class: secondary_button_classes("shrink-0") %>
       </li>
     <% end %>
   </ul>
 
   <%= button_to "このデバイス以外をすべてログアウト", others_account_sessions_path, method: :delete,
-        class: "mt-4 min-h-11 w-full rounded-lg border border-red-300 px-4 text-sm font-medium text-red-700 hover:bg-red-50" %>
+        class: danger_button_classes("mt-4") %>
 </section>

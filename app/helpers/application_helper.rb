@@ -24,6 +24,11 @@ module ApplicationHelper
     class_names("min-h-11 w-full cursor-pointer rounded-lg border border-red-300 px-4 py-3 text-sm font-medium text-red-700 hover:bg-red-50", extra)
   end
 
+  # 各一覧の右上にある「〜を追加」リンク (主ボタンの小型版)
+  def add_link_classes(extra = nil)
+    class_names("flex min-h-11 items-center rounded-lg bg-blue-600 px-4 font-medium text-white hover:bg-blue-500", extra)
+  end
+
   # 下部タブの「品目」は、一覧だけでなく詳細やフォームでもハイライトする
   def items_tab_current?
     controller_path == "items" || controller_path.start_with?("items/")

@@ -418,7 +418,7 @@ Item モデル (spec/models/item_spec.rb)
 
 **次フェーズの前にやる整理 (別コミット)**
 
-- [ ] 整理: Phase 4 のビュー (`app/views/admin/`, `app/views/accounts/`, `app/views/sessions/`) を
+- [x] 整理: Phase 4 のビュー (`app/views/admin/`, `app/views/accounts/`, `app/views/sessions/`) を
       Phase 6 で作ったフォームヘルパー (`field_classes` / `label_classes` / `primary_button_classes` など) と
       `app/views/application/_form_errors.html.erb` に寄せる
 
