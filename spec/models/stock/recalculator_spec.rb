@@ -10,10 +10,11 @@ RSpec.describe Stock::Recalculator, type: :model do
   let(:item) { create(:item) }
   let(:user) { create(:user) }
 
-  # 台帳だけを作る (キャッシュは既定値のまま) ヘルパー
-  def add_movement(lot, kind:, quantity:, occurred_on: Date.current)
+  # 台帳だけを作る (キャッシュは既定値のまま) ヘルパー。
+  # 廃棄には理由が要る (docs/spec/01-domain-model.md 2 節)
+  def add_movement(lot, kind:, quantity:, occurred_on: Date.current, disposal_reason: nil)
     lot.stock_movements.create!(item: lot.item, user: user, kind: kind,
-      quantity: quantity, occurred_on: occurred_on)
+      quantity: quantity, occurred_on: occurred_on, disposal_reason: disposal_reason)
   end
 
   describe "ロットの残数" do
@@ -199,7 +200,8 @@ RSpec.describe Stock::Recalculator, type: :model do
     it "廃棄は消費に数えない" do
       lot = create(:lot, item: item, initial_quantity: 12)
       add_movement(lot, kind: :usage, quantity: -1, occurred_on: Date.current - 5)
-      add_movement(lot, kind: :disposal, quantity: -1, occurred_on: Date.current)
+      add_movement(lot, kind: :disposal, quantity: -1, occurred_on: Date.current,
+        disposal_reason: :expired)
 
       described_class.call(item)
 

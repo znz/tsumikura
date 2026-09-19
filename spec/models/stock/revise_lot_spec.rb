@@ -177,4 +177,57 @@ RSpec.describe Stock::ReviseLot, type: :model do
     expect(lot.reload.initial_quantity).to eq 12
     expect(lot.stock_movements.sole.quantity).to eq 12
   end
+
+  # 棚卸でロット別に数えると、そのロットに正の adjustment が足される。
+  # 入庫の movement (購入の 1 行) と取り違えると、棚卸の記録を書き換えてしまう
+  describe "棚卸のプラス差分が付いたロット" do
+    let!(:lot) { create(:lot, item: item, initial_quantity: 3, acquired_on: Date.current - 3) }
+
+    before do
+      stock_take = create(:stock_take, user: user, counted_on: Date.current)
+      create(:stock_take_entry, stock_take: stock_take, item: item, lot: lot,
+        expected_quantity: 3, counted_quantity: 5)
+      Stock::FinalizeStockTake.call(stock_take, user: user)
+    end
+
+    it "数量を編集しても、直るのは入庫の movement だけで棚卸の +2 は残る" do
+      described_class.call(lot, initial_quantity: 4)
+
+      lot.reload
+      expect(lot.initial_quantity).to eq 4
+      expect(lot.remaining_quantity).to eq 6
+      expect(lot.stock_movements.kind_purchase.sole.quantity).to eq 4
+      expect(lot.stock_movements.kind_adjustment.sole.quantity).to eq 2
+    end
+
+    # 出庫が無ければ、数量を減らしても残数は負にならない
+    # (購入 3 + 棚卸 +2。数量 1 にしても 1 + 2 = 3 残る)
+    it "出庫が無ければ数量を減らせる" do
+      expect(described_class.call(lot, initial_quantity: 1).errors).to be_empty
+      expect(lot.reload.remaining_quantity).to eq 3
+    end
+
+    # 境界: 購入 3 + 棚卸 +2 − 使用 4 = 残 1。
+    # 直すのは入庫の movement だけなので「Σ movements − 旧入庫 (3) + 新数量 >= 0」、
+    # つまり新数量 >= 2 なら許され、1 なら残が −1 になるので拒否される
+    describe "使用が紐づいたあと (購入 3 + 棚卸 +2 − 使用 4)" do
+      before do
+        Stock::RecordUsage.call(item: item, user: user,
+          attributes: { quantity: 4, used_on: Date.current, lot_id: lot.id })
+      end
+
+      it "残数が負になる編集 (数量 1) は検証エラーになる" do
+        revised = described_class.call(lot, initial_quantity: 1)
+
+        expect(revised.errors[:initial_quantity]).to be_present
+        expect(lot.reload.initial_quantity).to eq 3
+        expect(lot.remaining_quantity).to eq 1
+      end
+
+      it "棚卸で足された分だけ小さい数量 (2) には編集できる" do
+        expect(described_class.call(lot, initial_quantity: 2).errors).to be_empty
+        expect(lot.reload.remaining_quantity).to eq 0
+      end
+    end
+  end
 end

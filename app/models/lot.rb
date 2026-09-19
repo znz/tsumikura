@@ -23,6 +23,9 @@ class Lot < ApplicationRecord
   belongs_to :store, optional: true
   belongs_to :user                       # 記録者
   has_many :stock_movements, dependent: :destroy
+  # ロット別に数えた棚卸の明細。確定済みの明細が紐づくロットは削除できない
+  # (ensure_not_counted)。ここで消えるのは下書きの明細だけ
+  has_many :stock_take_entries, dependent: :destroy
 
   # prefix は必須。付けないと initial などが AR の予約語・スコープ名と紛らわしくなる。
   # validate: true なので未知の値は例外ではなく検証エラーになる
@@ -32,6 +35,12 @@ class Lot < ApplicationRecord
   # (期限切れから先に引くと、期限切れを除いて数える在庫 q が減らないため)
   scope :fefo, ->(today = Date.current) {
     order(Arel.sql(sanitize_sql_array([ "(expires_on < ?) IS TRUE", today ])),
+      Arel.sql("expires_on ASC NULLS LAST"), :acquired_on, :id)
+  }
+  # 廃棄の引き当て順: 期限切れを先に、その中では FEFO。捨てるのは古いものからなので
+  # 使用 (fefo) とは逆に期限切れを先頭に回す (docs/spec/01-domain-model.md 5 節)
+  scope :expired_first, ->(today = Date.current) {
+    order(Arel.sql(sanitize_sql_array([ "(expires_on < ?) IS NOT TRUE", today ])),
       Arel.sql("expires_on ASC NULLS LAST"), :acquired_on, :id)
   }
   scope :available, -> { where("remaining_quantity > 0") }
@@ -47,6 +56,9 @@ class Lot < ApplicationRecord
   # prepend は必須。has_many :stock_movements, dependent: :destroy が先に宣言されているので、
   # 付けないと movement が消えたあとにガードが走り「消費なし」と判定してしまう
   before_destroy :ensure_not_consumed, prepend: true
+  # 確定済みの棚卸で数えたロットも消せない (確定済みの棚卸は削除しない方針なので、
+  # ロット経由でその明細だけが消えるのを止める)
+  before_destroy :ensure_not_counted, prepend: true
 
   validates :acquired_on, presence: true
   validates :initial_quantity,
@@ -99,6 +111,11 @@ class Lot < ApplicationRecord
     depleted_at.present?
   end
 
+  # 期限切れかどうかは「今日」で判断する (要購入判定の在庫 q と同じ基準)
+  def expired?(today = Date.current)
+    expires_on.present? && expires_on < today
+  end
+
   # 画面から編集・削除できるのは購入と初期在庫のロットだけ。
   # 調整ロット (棚卸・在庫不足の自動補填が作る) は元になった記録の側から直す
   def recordable?
@@ -113,6 +130,15 @@ class Lot < ApplicationRecord
   # このロットから出て行った数 (使用・廃棄・マイナスの調整) の絶対値
   def consumed_quantity
     -stock_movements.where(quantity: ...0).sum(:quantity)
+  end
+
+  # 入庫の movement (購入・初期在庫の 1 行)。ロットの数量・日付と一致していなければならず、
+  # 編集 (Stock::ReviseLot) はこの行を直す。
+  # 棚卸のプラス差分 (stock_take_entry つき) と在庫不足の補填 (usage_record つき) は
+  # あとから足される正の adjustment なので、入庫とは区別する
+  def inbound_movement
+    stock_movements.where(quantity: 1.., stock_take_entry_id: nil, usage_record_id: nil)
+      .order(:id).first
   end
 
   # 出庫の記録が紐づくロットは削除できない (docs/spec/01-domain-model.md 3 節)。
@@ -154,14 +180,17 @@ class Lot < ApplicationRecord
       errors.add(:acquired_on, :future) if acquired_on > Date.current
     end
 
-    # 編集後の残数が負になる変更は弾く (docs/spec/01-domain-model.md 3 節)
+    # 編集後の残数が負になる変更は弾く (docs/spec/01-domain-model.md 3 節)。
+    # 直すのは入庫の movement だけで、使用・廃棄・棚卸の調整はそのまま残るので
+    # 「Σ movements − 旧入庫 + 新数量 >= 0」で判定する
+    # (棚卸のプラス差分が付いたロットは、そのぶん小さい数量まで直せる)
     def initial_quantity_must_cover_consumption
       return if initial_quantity.blank? || !initial_quantity_changed?
 
-      consumed = consumed_quantity
-      return if initial_quantity >= consumed
+      minimum = inbound_movement&.quantity.to_i - stock_movements.sum(:quantity)
+      return if initial_quantity >= minimum
 
-      errors.add(:initial_quantity, :below_consumed, consumed: consumed)
+      errors.add(:initial_quantity, :below_consumed, consumed: minimum)
     end
 
     def ensure_not_consumed
@@ -170,6 +199,18 @@ class Lot < ApplicationRecord
       return unless consumed?
 
       errors.add(:base, :consumed)
+      throw(:abort)
+    end
+
+    # 確定済みの棚卸でこのロットを数えていたら削除させない。
+    # 差分 0 やプラス差分の明細には負の movement が付かないので ensure_not_consumed では
+    # 止まらないが、消すと確定済みの棚卸から行だけが抜け落ちる
+    def ensure_not_counted
+      # 品目ごと消すとき (item.destroy) は明細も一緒に消えるので止めない
+      return if destroyed_by_association
+      return unless stock_take_entries.joins(:stock_take).where.not(stock_takes: { finalized_at: nil }).exists?
+
+      errors.add(:base, :counted)
       throw(:abort)
     end
 end

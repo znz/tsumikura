@@ -34,6 +34,22 @@ authenticated_actions = [
   [ "用途のアーカイブ解除", :delete, -> { item_purpose_archive_path(item, purpose) }, -> { {} } ],
   [ "用途の削除", :delete, -> { item_purpose_path(item, purpose) }, -> { {} } ],
 
+  [ "廃棄の入力フォーム", :get, -> { new_item_disposal_path(item) }, -> { {} } ],
+  [ "廃棄の記録", :post, -> { item_disposals_path(item) },
+    -> { { disposal: { quantity: "1", occurred_on: Date.current.to_s, disposal_reason: "expired" } } } ],
+  [ "廃棄の取り消し", :delete, -> { disposal_path(disposal) }, -> { {} } ],
+
+  [ "棚卸一覧", :get, -> { stock_takes_path }, -> { {} } ],
+  [ "棚卸の追加フォーム", :get, -> { new_stock_take_path }, -> { {} } ],
+  [ "棚卸の作成", :post, -> { stock_takes_path },
+    -> { { stock_take: { counted_on: Date.current.to_s } } } ],
+  [ "棚卸の詳細", :get, -> { stock_take_path(stock_take) }, -> { {} } ],
+  [ "棚卸の入力フォーム", :get, -> { edit_stock_take_path(stock_take) }, -> { {} } ],
+  [ "棚卸の更新", :patch, -> { stock_take_path(stock_take) },
+    -> { { counts: { item.id.to_s => { total: "99" } } } } ],
+  [ "棚卸の確定", :post, -> { stock_take_finalization_path(stock_take) }, -> { {} } ],
+  [ "棚卸の削除", :delete, -> { stock_take_path(stock_take) }, -> { {} } ],
+
   [ "購入の入力フォーム", :get, -> { new_item_lot_path(item) }, -> { {} } ],
   [ "購入の記録", :post, -> { item_lots_path(item) },
     -> { { lot: { acquired_on: Date.current.to_s, initial_quantity: "1" } } } ],
@@ -65,7 +81,10 @@ authenticated_actions = [
   [ "店舗の追加", :post, -> { stores_path }, -> { { store: { name: "しんき" } } } ],
   [ "店舗の編集フォーム", :get, -> { edit_store_path(store) }, -> { {} } ],
   [ "店舗の更新", :patch, -> { store_path(store) }, -> { { store: { name: "のっとり" } } } ],
-  [ "店舗の削除", :delete, -> { store_path(store) }, -> { {} } ]
+  [ "店舗の削除", :delete, -> { store_path(store) }, -> { {} } ],
+
+  [ "メニュー", :get, -> { menu_path }, -> { {} } ],
+  [ "記録メニュー", :get, -> { record_menu_path }, -> { {} } ]
 ]
 
 RSpec.describe "品目とマスタの認可", type: :request do
@@ -73,6 +92,13 @@ RSpec.describe "品目とマスタの認可", type: :request do
   let(:lot) { create(:lot, item: item, initial_quantity: 5) }
   let(:purpose) { create(:item_purpose, item: item, name: "もとの用途") }
   let(:usage_record) { create(:usage_record, item: item, quantity: 2, used_on: Date.current) }
+  let(:disposal) do
+    lot   # 在庫が無いと廃棄できないので、先に購入の記録を作っておく
+    Stock::RecordDisposal.call(item: item, user: create(:user), attributes: {
+      quantity: 1, occurred_on: Date.current, disposal_reason: "expired"
+    }).movements.sole
+  end
+  let(:stock_take) { create(:stock_take, note: "もとの棚卸") }
   let(:category) { create(:category, name: "もとのカテゴリ") }
   let(:storage_location) { create(:storage_location, name: "もとの保管場所") }
   let(:store) { create(:store, name: "もとの店舗") }
@@ -90,14 +116,16 @@ RSpec.describe "品目とマスタの認可", type: :request do
 
   # 表への足し忘れを検出する。ルーティング側の定義と、表が実際に叩いているアクションを
   # 突き合わせるので、アクションを足して表に足し忘れるとここが落ちる
-  it "表は品目とマスタの全ルートを網羅している" do
+  it "表は品目・記録・マスタの全ルートを網羅している" do
     target_controllers = %w[
       items items/archives items/quick_uses
-      usage_records lots
+      usage_records lots disposals
+      stock_takes stock_takes/finalizations
       item_purposes item_purposes/positions item_purposes/archives
       categories categories/positions
       storage_locations storage_locations/positions
       stores
+      menus record_menus
     ]
 
     defined_actions = Rails.application.routes.routes.filter_map { |route|
@@ -127,12 +155,15 @@ RSpec.describe "品目とマスタの認可", type: :request do
       lot
       purpose
       usage_record
+      disposal
+      stock_take
       category
       storage_location
       store
 
       expect { request_all_actions }.not_to change {
         [ Item.count, Lot.count, StockMovement.count, UsageRecord.count, ItemPurpose.count,
+          StockTake.count, StockTakeEntry.count,
           Category.count, StorageLocation.count, Store.count ]
       }
     end
@@ -143,6 +174,8 @@ RSpec.describe "品目とマスタの認可", type: :request do
       lot
       purpose
       usage_record
+      disposal
+      stock_take
 
       request_all_actions
 
@@ -152,7 +185,8 @@ RSpec.describe "品目とマスタの認可", type: :request do
       expect(purpose.reload.name).to eq "もとの用途"
       expect(purpose).not_to be_archived
       expect(usage_record.reload.quantity).to eq 2
-      expect(item.current_quantity).to eq 3
+      expect(stock_take.reload.finalized_at).to be_nil
+      expect(item.current_quantity).to eq 2
       expect(category.reload.name).to eq "もとのカテゴリ"
       expect(storage_location.reload.name).to eq "もとの保管場所"
       expect(store.reload.name).to eq "もとの店舗"

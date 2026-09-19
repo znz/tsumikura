@@ -68,6 +68,7 @@
     <%= form.label :acquired_on, class: label_classes %>
     <%# 未来日は記録できない (docs/spec/01-domain-model.md 2 節) %>
     <%= form.date_field :acquired_on, max: Date.current, required: true, class: field_classes %>
+    <%= render "stock_take_hint", item: item %>
   </div>
 
   <% if item.tracks_expiry? %>

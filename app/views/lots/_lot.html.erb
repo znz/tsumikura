@@ -12,7 +12,11 @@
     </p>
     <p class="mt-1 text-sm text-slate-500">
       <% if item.tracks_expiry? %>
-        期限: <%= lot.expires_on ? l(lot.expires_on) : "なし" %> ・
+        期限: <%= lot.expires_on ? l(lot.expires_on) : "なし" %>
+        <% if lot.expired? %>
+          <span class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">期限切れ</span>
+        <% end %>
+        ・
       <% end %>
       購入日: <%= l(lot.acquired_on) %>
     </p>
@@ -26,8 +30,15 @@
       <p class="mt-1 text-sm text-slate-500"><%= lot.note %></p>
     <% end %>
   </div>
-  <%# 調整ロットは画面から編集できない (元になった使用記録・棚卸の側から直す) %>
-  <% if lot.recordable? %>
-    <%= link_to "編集", edit_lot_path(lot), class: secondary_button_classes("shrink-0") %>
-  <% end %>
+  <div class="flex shrink-0 items-center gap-2">
+    <%# 期限切れロットからは廃棄に進めるようにする (docs/spec/02-forecast.md 12 節) %>
+    <% if lot.expired? && lot.remaining_quantity.positive? %>
+      <%= link_to "廃棄", new_item_disposal_path(item, lot_id: lot.id),
+            aria: { label: "このロットを廃棄" }, class: secondary_button_classes("text-red-700") %>
+    <% end %>
+    <%# 調整ロットは画面から編集できない (元になった使用記録・棚卸の側から直す) %>
+    <% if lot.recordable? %>
+      <%= link_to "編集", edit_lot_path(lot), class: secondary_button_classes %>
+    <% end %>
+  </div>
 </li>

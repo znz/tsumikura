@@ -45,9 +45,11 @@ module Stock
         lot.item_id = lot.item_id_in_database
       end
 
-      # 入庫の movement (購入、または棚卸のプラス差分)。数量と日付をロットに合わせる
+      # 入庫の movement。数量と日付をロットに合わせる。
+      # 棚卸のプラス差分と在庫不足の補填 (あとから足される正の adjustment) は
+      # 入庫ではないので Lot#inbound_movement が除いている
       def inbound_movement
-        lot.stock_movements.where(quantity: 1..).order(:id).first ||
+        lot.inbound_movement ||
           raise(InboundMovementMissing, "ロット ##{lot.id} に入庫の記録がありません")
       end
   end

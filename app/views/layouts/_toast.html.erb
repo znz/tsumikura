@@ -1,6 +1,8 @@
-<%# locals: (message:, usage_record_id: nil) %>
+<%# locals: (message:, undo_path: nil) %>
 <%#
-  ワンタップ使用の取り消し付きトースト (docs/spec/03-screens.md 画面 4b)。
+  取り消し付きトースト (docs/spec/03-screens.md 画面 4b)。
+  ワンタップ使用と廃棄で共用するので、取り消し先は undo_path で受け取る
+  (使用記録専用の flash[:undo_usage_record_id] から一般化した)。
   自動で消えるのは JS があるときだけ (toast_controller.js)。
   JS が無くても文言と「取り消し」ボタンはそのまま使える。
   data-turbo-temporary: Turbo のスナップショットに残さない (「戻る」で復元された
@@ -10,8 +12,8 @@
      data-turbo-temporary data-controller="toast" data-toast-delay-value="8000">
   <p><%= message %></p>
 
-  <% if usage_record_id.present? %>
-    <%= button_to "取り消し", usage_record_path(usage_record_id), method: :delete,
+  <% if undo_path.present? %>
+    <%= button_to "取り消し", undo_path, method: :delete,
           class: "min-h-11 shrink-0 cursor-pointer rounded-lg border border-white/40 px-3 font-medium text-white hover:bg-white/10" %>
   <% end %>
 </div>

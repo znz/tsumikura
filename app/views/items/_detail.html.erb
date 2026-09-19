@@ -24,6 +24,9 @@
 
   <%= link_to "購入を記録", new_item_lot_path(@item),
         class: primary_button_classes("mt-2 block text-center") %>
+  <%# 期限切れ・破損・紛失は「使った」ではないので廃棄で記録する %>
+  <%= link_to "廃棄を記録", new_item_disposal_path(@item),
+        class: secondary_button_classes("mt-2") %>
 </section>
 
 <%# ロットは期限が近い順 (FEFO)。使い切ったロットは畳んでおく (docs/spec/01-domain-model.md 判断 2) %>
@@ -98,7 +101,7 @@
   </section>
 <% end %>
 
-<%# 使用と購入を時系列で混ぜる (docs/spec/03-screens.md 画面 3 の履歴タブ) %>
+<%# 使用・購入・廃棄・棚卸の調整を時系列で混ぜる (docs/spec/03-screens.md 画面 3) %>
 <section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="最近の記録">
   <h2 class="font-bold text-slate-900">最近の記録</h2>
 
@@ -107,37 +110,7 @@
   <% else %>
     <ul class="mt-3 divide-y divide-slate-200" aria-label="最近の記録一覧">
       <% @recent_records.each do |record| %>
-        <li class="flex items-start justify-between gap-3 py-3">
-          <div class="min-w-0">
-            <% if record.is_a?(UsageRecord) %>
-              <p class="font-medium text-slate-900">
-                使った <%= record.quantity %> <%= @item.unit %>
-                <% if record.item_purpose %>
-                  <span class="text-sm font-normal text-slate-500">(<%= record.item_purpose.name %>)</span>
-                <% end %>
-              </p>
-            <% else %>
-              <p class="font-medium text-slate-900">
-                <%= lot_kind_label(record) %> <%= record.initial_quantity %> <%= @item.unit %>
-                <% if record.store %>
-                  <span class="text-sm font-normal text-slate-500"><%= record.store.name %></span>
-                <% end %>
-              </p>
-            <% end %>
-            <p class="mt-1 text-sm text-slate-500"><%= l(record.recorded_on) %></p>
-          </div>
-
-          <div class="flex shrink-0 items-center gap-2">
-            <% if record.is_a?(UsageRecord) %>
-              <%= link_to "編集", edit_usage_record_path(record), class: secondary_button_classes %>
-              <%= button_to "削除", usage_record_path(record), method: :delete,
-                    form: { data: { turbo_confirm: "この使用の記録を削除します。よろしいですか?" } },
-                    class: secondary_button_classes("cursor-pointer text-red-700") %>
-            <% else %>
-              <%= link_to "編集", edit_lot_path(record), class: secondary_button_classes %>
-            <% end %>
-          </div>
-        </li>
+        <%= render "items/recent_record", record: record, item: @item %>
       <% end %>
     </ul>
   <% end %>

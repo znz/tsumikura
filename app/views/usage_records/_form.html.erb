@@ -74,6 +74,7 @@
     </div>
     <%= form.date_field :used_on, max: Date.current, required: true,
           data: { date_shortcut_target: "input" }, class: field_classes %>
+    <%= render "stock_take_hint", item: item %>
   </div>
 
   <% if lots.any? %>

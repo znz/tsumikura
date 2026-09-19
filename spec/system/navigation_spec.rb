@@ -17,7 +17,28 @@ RSpec.describe "グローバルナビ", type: :system do
       expect(page).to have_link("メニュー")
       expect(page).to have_link("品目")
       expect(page).to have_text("買い物")
-      expect(page).to have_text("記録")
+      expect(page).to have_link("記録")
+    end
+  end
+
+  it "中央の「＋記録」から記録メニューに行ける" do
+    sign_in_as create(:user)
+
+    within(tab_bar) { click_link "記録" }
+
+    expect(page).to have_current_path(record_menu_path)
+    expect(page).to have_link("棚卸")
+  end
+
+  it "記録メニューと棚卸では記録タブがハイライトされる" do
+    sign_in_as create(:user)
+
+    [ record_menu_path, stock_takes_path, new_stock_take_path ].each do |path|
+      visit path
+
+      within(tab_bar) do
+        expect(page).to have_css("a[aria-current='page']", text: "記録"), "#{path} で記録タブが現在地にならない"
+      end
     end
   end
 
@@ -53,13 +74,12 @@ RSpec.describe "グローバルナビ", type: :system do
     within(tab_bar) { expect(page).to have_no_css("a[aria-current='page']", text: "品目") }
   end
 
-  it "未実装のタブ (買い物・記録) はリンクにせず、準備中だと伝える" do
+  it "未実装のタブ (買い物) はリンクにせず、準備中だと伝える" do
     sign_in_as create(:user)
 
     within(tab_bar) do
       expect(page).to have_no_link("買い物")
-      expect(page).to have_no_link("記録")
-      expect(page).to have_css("[role='link'][aria-disabled='true']", count: 2)
+      expect(page).to have_css("[role='link'][aria-disabled='true']", count: 1)
       expect(page).to have_text("準備中")
     end
   end
@@ -94,6 +114,15 @@ RSpec.describe "グローバルナビ", type: :system do
       click_link "メニュー"
       click_link "店舗"
       expect(page).to have_current_path(stores_path)
+    end
+
+    it "棚卸に行ける" do
+      sign_in_as create(:user)
+
+      click_link "メニュー"
+      click_link "棚卸"
+
+      expect(page).to have_current_path(stock_takes_path)
     end
 
     it "管理者はユーザー管理に行ける" do

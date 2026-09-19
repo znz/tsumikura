@@ -1,6 +1,7 @@
 <%#
   下部固定の 5 タブ (docs/spec/03-screens.md 1 節)。
-  記録 / 買い物は Phase 8 以降で作るため、リンクにせず無効表示にする
+  中央の「＋記録」はアクションシート (JS が要る) ではなく記録メニューのページに送る。
+  買い物は Phase 11 で作るため、リンクにせず無効表示にする
   (存在しないルートヘルパーを呼ばない)。
 %>
 <% item_class = "flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 py-2 text-xs font-medium" %>
@@ -25,10 +26,12 @@
     </li>
 
     <li class="flex-1">
-      <span class="flex min-h-14 w-full flex-col items-center justify-center py-2" role="link" aria-disabled="true">
-        <span class="flex size-11 items-center justify-center rounded-full bg-slate-200 text-2xl leading-none text-slate-400" aria-hidden="true">＋</span>
-        <span class="mt-0.5 text-xs font-medium text-slate-300">記録<span class="sr-only"> (準備中)</span></span>
-      </span>
+      <%= link_to record_menu_path,
+            class: "flex min-h-14 w-full flex-col items-center justify-center py-2",
+            aria: { current: ("page" if record_tab_current?) } do %>
+        <span class="flex size-11 items-center justify-center rounded-full bg-blue-600 text-2xl leading-none text-white" aria-hidden="true">＋</span>
+        <span class="mt-0.5 text-xs font-medium <%= record_tab_current? ? 'text-blue-600' : 'text-slate-600' %>">記録</span>
+      <% end %>
     </li>
 
     <li class="flex-1">

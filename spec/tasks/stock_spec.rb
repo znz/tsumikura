@@ -190,7 +190,8 @@ RSpec.describe "stock タスク", type: :task do
     it "使用記録に紐づく movement の種別の不整合を検出する" do
       create(:lot, item: item, initial_quantity: 12)
       usage = create(:usage_record, item: item, quantity: 2)
-      usage.stock_movements.sole.update_column(:kind, StockMovement.kinds[:disposal])
+      # 廃棄には理由が要る (check 制約) ので、負の調整にすり替えて不整合を作る
+      usage.stock_movements.sole.update_column(:kind, StockMovement.kinds[:adjustment])
 
       result = run_rake_task("stock:verify")
 
@@ -225,6 +226,160 @@ RSpec.describe "stock タスク", type: :task do
 
       expect(result.status).to eq 1
       expect(result.output).to include "使用記録の品目"
+    end
+
+    # 棚卸の差分は、紐づく movements の合計と一致していなければならない (二重管理のずれ)
+    describe "棚卸" do
+      let(:user) { create(:user) }
+
+      def finalized_entry(counted:, expected_quantity: nil)
+        stock_take = create(:stock_take, user: user)
+        entry = create(:stock_take_entry, stock_take: stock_take, item: item,
+          expected_quantity: expected_quantity || item.current_quantity, counted_quantity: counted)
+        Stock::FinalizeStockTake.call(stock_take, user: user)
+        entry.reload
+      end
+
+      it "確定した棚卸に差異が無ければ正常終了する" do
+        create(:lot, item: item, initial_quantity: 12)
+        finalized_entry(counted: 9)
+
+        expect(run_rake_task("stock:verify")).to be_ok
+      end
+
+      it "確定済みの差分と movements の合計のずれを検出する" do
+        create(:lot, item: item, initial_quantity: 12)
+        entry = finalized_entry(counted: 9)
+        entry.stock_movements.sole.update_column(:quantity, -1)
+        Stock::Recalculator.call(item)
+
+        result = run_rake_task("stock:verify")
+
+        expect(result.status).to eq 1
+        expect(result.output).to include "棚卸の差分"
+      end
+
+      it "確定済みなのに movement が無い非ゼロ差分の明細を検出する" do
+        create(:lot, item: item, initial_quantity: 12)
+        entry = finalized_entry(counted: 9)
+        entry.stock_movements.sole.delete
+        Stock::Recalculator.call(item)
+
+        result = run_rake_task("stock:verify")
+
+        expect(result.status).to eq 1
+        expect(result.output).to include "棚卸の差分"
+      end
+
+      it "下書きなのに movement がある明細を検出する" do
+        lot = create(:lot, item: item, initial_quantity: 12)
+        stock_take = create(:stock_take, user: user)
+        entry = create(:stock_take_entry, stock_take: stock_take, item: item,
+          expected_quantity: 12, counted_quantity: 9)
+        create(:stock_movement, lot: lot, kind: :adjustment, quantity: -3,
+          stock_take_entry: entry)
+        Stock::Recalculator.call(item)
+
+        result = run_rake_task("stock:verify")
+
+        expect(result.status).to eq 1
+        expect(result.output).to include "下書きの在庫の記録"
+      end
+
+      it "実数未入力の明細は差異にならない" do
+        create(:lot, item: item, initial_quantity: 12)
+        stock_take = create(:stock_take, user: user)
+        create(:stock_take_entry, stock_take: stock_take, item: item, counted_quantity: nil)
+        # 1 件も数えていない棚卸は確定できないので、別の品目を 1 件だけ数えておく
+        other = create(:item, name: "ティッシュ")
+        create(:lot, item: other, initial_quantity: 5)
+        create(:stock_take_entry, stock_take: stock_take, item: other,
+          expected_quantity: 5, counted_quantity: 4)
+        Stock::FinalizeStockTake.call(stock_take, user: user)
+
+        expect(run_rake_task("stock:verify")).to be_ok
+      end
+
+      # 棚卸のプラス差分で作る調整ロットは、使用記録に紐づかない入庫を持つので
+      # 「補填の調整ロット」の検査 (合計 0) には掛からない
+      it "プラス差分の調整ロットは補填の検査に掛からない" do
+        create(:lot, item: item, initial_quantity: 12)
+        finalized_entry(counted: 15)
+
+        expect(run_rake_task("stock:verify")).to be_ok
+      end
+
+      # 廃棄は kind: disposal なので「使用記録に紐づかない使用の記録」には当たらない
+      it "廃棄の記録は差異にならない" do
+        create(:lot, item: item, initial_quantity: 12)
+        Stock::RecordDisposal.call(item: item, user: user, attributes: {
+          quantity: 2, occurred_on: Date.current, disposal_reason: "expired"
+        })
+
+        expect(run_rake_task("stock:verify")).to be_ok
+      end
+
+      it "棚卸の movement の日付が棚卸日とずれていると検出する" do
+        create(:lot, item: item, initial_quantity: 12)
+        entry = finalized_entry(counted: 9)
+        entry.stock_movements.sole.update_column(:occurred_on, Date.current - 1)
+        Stock::Recalculator.call(item)
+
+        result = run_rake_task("stock:verify")
+
+        expect(result.status).to eq 1
+        expect(result.output).to include "棚卸の日付"
+      end
+
+      it "ロット別に数えた明細の movement が別のロットに付いていると検出する" do
+        lot = create(:lot, item: item, initial_quantity: 12)
+        other = create(:lot, item: item, initial_quantity: 5)
+        stock_take = create(:stock_take, user: user)
+        entry = create(:stock_take_entry, stock_take: stock_take, item: item, lot: lot,
+          expected_quantity: 12, counted_quantity: 9)
+        Stock::FinalizeStockTake.call(stock_take, user: user)
+        entry.stock_movements.sole.update_column(:lot_id, other.id)
+        Stock::Recalculator.call(item)
+
+        result = run_rake_task("stock:verify")
+
+        expect(result.status).to eq 1
+        expect(result.output).to include "棚卸で数えたロット"
+      end
+
+      it "棚卸の調整ロットと入庫 movement のずれを検出する" do
+        create(:lot, item: item, initial_quantity: 12)
+        finalized_entry(counted: 15)
+        Lot.kind_adjustment.sole.update_columns(initial_quantity: 9, acquired_on: Date.current - 2)
+
+        result = run_rake_task("stock:verify")
+
+        expect(result.status).to eq 1
+        expect(result.output).to include "棚卸の調整ロット"
+        expect(result.output).to include "入庫の数量"
+        expect(result.output).to include "入庫の日付"
+      end
+
+      # 調整は棚卸の明細 (棚卸の差分) か使用記録 (在庫不足の補填) に紐づく。
+      # どちらでもない行はどの操作で在庫が動いたのか追えない
+      it "出どころの分からない調整の記録を検出する" do
+        lot = create(:lot, item: item, initial_quantity: 12)
+        create(:stock_movement, lot: lot, kind: :adjustment, quantity: -2)
+        Stock::Recalculator.call(item)
+
+        result = run_rake_task("stock:verify")
+
+        expect(result.status).to eq 1
+        expect(result.output).to include "調整の出どころ"
+      end
+
+      it "棚卸の差分と在庫不足の補填は出どころありとみなす" do
+        create(:lot, item: item, initial_quantity: 12)
+        finalized_entry(counted: 9)
+        create(:usage_record, item: create(:item), quantity: 3)   # 在庫 0 なので補填が入る
+
+        expect(run_rake_task("stock:verify")).to be_ok
+      end
     end
 
     it "ずれていない品目は出力に並ばない" do

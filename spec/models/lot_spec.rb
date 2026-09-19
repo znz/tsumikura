@@ -292,7 +292,7 @@ RSpec.describe Lot, type: :model do
 
     it "廃棄の記録が紐づくロットは削除できない" do
       lot = create(:lot, initial_quantity: 3)
-      create(:stock_movement, lot: lot, kind: :disposal, quantity: -1)
+      create(:stock_movement, lot: lot, kind: :disposal, quantity: -1, disposal_reason: :expired)
 
       expect(lot.destroy).to be false
       expect(described_class.exists?(lot.id)).to be true
@@ -366,7 +366,7 @@ RSpec.describe Lot, type: :model do
     it "#consumed_quantity は出庫の合計 (絶対値)" do
       lot = create(:lot, initial_quantity: 12)
       create(:stock_movement, lot: lot, kind: :usage, quantity: -5)
-      create(:stock_movement, lot: lot, kind: :disposal, quantity: -2)
+      create(:stock_movement, lot: lot, kind: :disposal, quantity: -2, disposal_reason: :expired)
 
       expect(lot.consumed_quantity).to eq 7
     end
@@ -479,6 +479,123 @@ RSpec.describe Lot, type: :model do
       create(:lot, item: item, expires_on: nil)
 
       expect(item.lots.expired).to contain_exactly(expired)
+    end
+  end
+
+  describe "#expired?" do
+    it "今日より前に期限が切れていれば true (今日はまだ期限切れではない)" do
+      expect(build(:lot, expires_on: Date.current - 1)).to be_expired
+      expect(build(:lot, expires_on: Date.current)).not_to be_expired
+      expect(build(:lot, expires_on: nil)).not_to be_expired
+    end
+  end
+
+  # 廃棄は古いものから捨てるので、使用 (FEFO・期限切れは最後) とは順序が逆
+  describe ".expired_first" do
+    it "期限切れ → 期限が近い順 → 期限なし の順に並ぶ" do
+      item = create(:item)
+      expired = create(:lot, item: item, expires_on: Date.current - 1)
+      near = create(:lot, item: item, expires_on: Date.current + 1)
+      far = create(:lot, item: item, expires_on: Date.current + 30)
+      none = create(:lot, item: item, expires_on: nil)
+
+      expect(item.lots.expired_first.to_a).to eq [ expired, near, far, none ]
+    end
+  end
+
+  # 差分 0 やプラス差分の明細には負の movement が付かないので、
+  # 「出庫があるか」のガードだけでは止まらない
+  describe "確定済みの棚卸で数えたロット" do
+    let(:item) { create(:item) }
+    let(:lot) { create(:lot, item: item, initial_quantity: 3) }
+
+    # 確定済みの棚卸の明細は作れない (StockTakeEntry::Finalized) ので、
+    # 実際の順番どおり「数えてから確定する」
+    def entry_for(stock_take)
+      create(:stock_take_entry, stock_take: stock_take, item: item, lot: lot,
+        expected_quantity: 3, counted_quantity: 3)
+    end
+
+    def finalized_entry
+      stock_take = create(:stock_take)
+      entry_for(stock_take)
+      stock_take.update_column(:finalized_at, Time.current)
+      stock_take
+    end
+
+    it "確定済みの明細が紐づくロットは削除できない" do
+      finalized_entry
+
+      expect(lot.destroy).to be false
+      expect(described_class.exists?(lot.id)).to be true
+      expect(lot.errors.full_messages.join).to include "棚卸"
+    end
+
+    it "下書きの明細だけなら削除でき、明細も一緒に消える" do
+      entry_for(create(:stock_take))
+
+      expect { lot.destroy }.to change { StockTakeEntry.count }.by(-1)
+      expect(described_class.exists?(lot.id)).to be false
+    end
+
+    it "品目ごと消すときは止めない (明細も一緒に消える)" do
+      finalized_entry
+
+      expect { item.destroy }.to change { described_class.count }.by(-1)
+        .and change { StockTakeEntry.count }.by(-1)
+    end
+  end
+
+  # 棚卸のプラス差分 (ロット別に数えた明細) は、そのロットに正の adjustment を足す。
+  # 入庫の movement はあくまで購入・初期在庫の 1 行なので、区別できなければならない
+  describe "#inbound_movement" do
+    let(:item) { create(:item) }
+    let(:lot) { create(:lot, item: item, initial_quantity: 3) }
+
+    def stock_take_adjustment(quantity)
+      stock_take = create(:stock_take)
+      entry = create(:stock_take_entry, stock_take: stock_take, item: item, lot: lot,
+        expected_quantity: 3, counted_quantity: 3 + quantity)
+      create(:stock_movement, lot: lot, kind: :adjustment, quantity: quantity,
+        stock_take_entry: entry)
+      Stock::Recalculator.call(item)
+    end
+
+    it "購入の入庫を返す (棚卸のプラス差分は入庫ではない)" do
+      stock_take_adjustment(2)
+
+      expect(lot.inbound_movement).to be_kind_purchase
+      expect(lot.inbound_movement.quantity).to eq 3
+    end
+
+    it "在庫不足の補填 (使用記録に紐づく正の adjustment) も入庫ではない" do
+      empty = create(:item)
+      Stock::RecordUsage.call(item: empty, user: create(:user),
+        attributes: { quantity: 2, used_on: Date.current })
+
+      expect(empty.lots.kind_adjustment.sole.inbound_movement).to be_nil
+    end
+
+    it "入庫の記録が無ければ nil" do
+      expect(create(:lot, with_movement: false).inbound_movement).to be_nil
+    end
+
+    # 直すのは入庫の movement だけなので、棚卸で足された分はそのまま残る
+    it "棚卸で +2 されたロットは、その分だけ小さい数量にも編集できる" do
+      stock_take_adjustment(2)
+
+      create(:stock_movement, lot: lot, kind: :usage, quantity: -4,
+        usage_record: create(:usage_record, item: item, quantity: 4, with_movements: false))
+      Stock::Recalculator.call(item)
+
+      # Σ movements (3 + 2 − 4 = 1) − 旧入庫 (3) + 新数量 >= 0 なので 2 まで下げられる
+      lot.reload
+      expect(build_revision(lot, 2)).to be_valid
+      expect(build_revision(lot, 1)).not_to be_valid
+    end
+
+    def build_revision(lot, quantity)
+      lot.tap { |record| record.initial_quantity = quantity }
     end
   end
 end

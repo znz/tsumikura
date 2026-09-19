@@ -7,6 +7,9 @@ Rails.application.routes.draw do
   resource :session, only: %i[ new create destroy ]
 
   resource :menu, only: :show
+  # 下部タブの中央「＋記録」。アクションシートは JS が要るのでページにする
+  # (docs/spec/03-screens.md 1 節)
+  resource :record_menu, only: :show, path: "record"
 
   # 品目は物理削除しない (docs/spec/01-domain-model.md 3 節) ので destroy を持たず、
   # アーカイブ / 復元を Items::ArchivesController に分ける
@@ -18,6 +21,7 @@ Rails.application.routes.draw do
     # 使用・購入の入力は品目配下
     resources :usage_records, only: %i[ new create ]
     resources :lots, only: %i[ new create ]
+    resources :disposals, only: %i[ new create ]
     # 用途マスタは品目詳細配下 (docs/spec/03-screens.md 画面 9b)。
     # as: :purposes で item_purposes_path(item) / edit_item_purpose_path(item, purpose) になる
     resources :item_purposes, path: "purposes", as: :purposes, except: :show do
@@ -30,6 +34,14 @@ Rails.application.routes.draw do
   # 使用記録・ロットの一覧・詳細は品目詳細が兼ねるので index / show は置かない
   resources :usage_records, only: %i[ edit update destroy ]
   resources :lots, only: %i[ edit update destroy ]
+  # 廃棄は movement 1 行が記録そのものなので、取り消しは削除だけ
+  resources :disposals, only: :destroy
+
+  # 棚卸 (docs/spec/03-screens.md 画面 6)。下書きを作って数え、最後に確定する。
+  # 確定は finalized_at を update で permit しないために別のコントローラに分ける
+  resources :stock_takes do
+    resource :finalization, only: :create, module: :stock_takes
+  end
 
   # マスタ。show は一覧で足りるので置かない。
   # 並べ替えは JS 無しで動く「上へ / 下へ」なので、position の更新も 1 つのリソースにする

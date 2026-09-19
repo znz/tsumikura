@@ -27,6 +27,24 @@ module SqlRecorder
   def first_write_index(statements)
     statements.index { |sql| sql.match?(WRITE_STATEMENT) }
   end
+
+  # あるテーブルに行ロック (SELECT ... FOR UPDATE) を掛けた順に、その id を集める。
+  # 複数の品目をロックする順番 (デッドロック防止の id 昇順) を確かめるために使う。
+  # id はプレースホルダ ($1) になるので SQL の文字列ではなく bind から読む
+  # (LIMIT も bind になるので、名前が id のものだけを見る)
+  def recorded_lock_ids(table)
+    ids = []
+    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_name, _start, _finish, _id, payload|
+      next if payload[:cached]
+      next unless payload[:sql].include?("FOR UPDATE") && payload[:sql].include?(%("#{table}"))
+
+      ids.concat(Array(payload[:binds]).select { |bind| bind.name.to_s == "id" }.map(&:value))
+    end
+    yield
+    ids
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber)
+  end
 end
 
 RSpec.configure do |config|

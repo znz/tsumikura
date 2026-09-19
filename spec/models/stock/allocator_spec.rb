@@ -254,4 +254,74 @@ RSpec.describe Stock::Allocator, type: :model do
     expect(result.allocations.first).to eq [ lot, 1 ]
     expect(result.shortage).to eq 1
   end
+
+  # 棚卸と廃棄は「実物がこれだけだった」という記録なので、足りない分を作ってはいけない
+  # (docs/spec/01-domain-model.md 5 節 Phase 8 からの申し送り)
+  describe "compensate: false" do
+    it "不足しても調整ロットを作らず、引けた分だけ返す" do
+      lot = add_lot(quantity: 2)
+
+      result = nil
+      expect {
+        result = described_class.call(item: item, quantity: 5, user: user, on: Date.current,
+          compensate: false)
+      }.not_to change { Lot.count }
+
+      expect(pairs(result)).to eq [ [ lot.id, 2 ] ]
+      expect(result.shortage).to eq 3
+      expect(result.compensating_lot).to be_nil
+    end
+
+    it "在庫が足りていれば既定と同じ結果になる" do
+      lot = add_lot(quantity: 5)
+
+      result = described_class.call(item: item, quantity: 5, user: user, on: Date.current,
+        compensate: false)
+
+      expect(pairs(result)).to eq [ [ lot.id, 5 ] ]
+      expect(result.shortage).to eq 0
+    end
+
+    it "在庫が 1 件も無ければ引き当ては空になる" do
+      result = described_class.call(item: item, quantity: 3, user: user, on: Date.current,
+        compensate: false)
+
+      expect(result.allocations).to be_empty
+      expect(result.shortage).to eq 3
+    end
+  end
+
+  # 廃棄は古いものから捨てるので、使用 (FEFO・期限切れは最後) とは順序が逆になる
+  describe "expired_first: true" do
+    it "期限切れロットから先に引く" do
+      expired = add_lot(quantity: 2, expires_on: Date.current - 1)
+      fresh = add_lot(quantity: 5, expires_on: Date.current + 1)
+
+      result = described_class.call(item: item, quantity: 3, user: user, on: Date.current,
+        compensate: false, expired_first: true)
+
+      expect(pairs(result)).to eq [ [ expired.id, 2 ], [ fresh.id, 1 ] ]
+    end
+
+    it "期限切れが無ければ FEFO と同じ並び (期限が近い順 → 期限なし)" do
+      near = add_lot(quantity: 1, expires_on: Date.current + 1)
+      far = add_lot(quantity: 1, expires_on: Date.current + 30)
+      none = add_lot(quantity: 1, expires_on: nil)
+
+      result = described_class.call(item: item, quantity: 3, user: user, on: Date.current,
+        compensate: false, expired_first: true)
+
+      expect(pairs(result)).to eq [ [ near.id, 1 ], [ far.id, 1 ], [ none.id, 1 ] ]
+    end
+
+    it "期限切れが 2 件あれば、その中でも期限の古い順に引く" do
+      older = add_lot(quantity: 1, expires_on: Date.current - 10)
+      newer = add_lot(quantity: 1, expires_on: Date.current - 1)
+
+      result = described_class.call(item: item, quantity: 2, user: user, on: Date.current,
+        compensate: false, expired_first: true)
+
+      expect(pairs(result)).to eq [ [ older.id, 1 ], [ newer.id, 1 ] ]
+    end
+  end
 end

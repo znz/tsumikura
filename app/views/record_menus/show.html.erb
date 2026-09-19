@@ -1,0 +1,38 @@
+<% content_for :title, "記録" %>
+
+<h1 class="text-2xl font-bold text-slate-900">記録する</h1>
+<p class="<%= hint_classes %>">
+  「使った」「買った」「廃棄」は品目を選んでから記録します。
+</p>
+
+<ul class="mt-4 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white"
+    aria-label="記録メニュー">
+  <li>
+    <%= link_to items_path, class: "flex min-h-14 flex-col justify-center px-4 py-3 hover:bg-slate-50" do %>
+      <span class="font-medium text-slate-900">使った</span>
+      <span class="text-sm text-slate-500">品目一覧の「使った」で 1 タップ記録できます</span>
+    <% end %>
+  </li>
+  <li>
+    <%= link_to items_path, class: "flex min-h-14 flex-col justify-center px-4 py-3 hover:bg-slate-50" do %>
+      <span class="font-medium text-slate-900">買った</span>
+      <span class="text-sm text-slate-500">品目を選んで「購入を記録」します</span>
+    <% end %>
+  </li>
+  <li>
+    <%= link_to new_stock_take_path, class: "flex min-h-14 flex-col justify-center px-4 py-3 hover:bg-slate-50" do %>
+      <span class="font-medium text-slate-900">棚卸</span>
+      <span class="text-sm text-slate-500">保管場所ごとに数えて在庫を実数に合わせます</span>
+    <% end %>
+  </li>
+  <li>
+    <%= link_to items_path, class: "flex min-h-14 flex-col justify-center px-4 py-3 hover:bg-slate-50" do %>
+      <span class="font-medium text-slate-900">廃棄</span>
+      <span class="text-sm text-slate-500">品目を選んで「廃棄を記録」します (期限切れ・破損など)</span>
+    <% end %>
+  </li>
+</ul>
+
+<p class="mt-6 text-sm">
+  <%= link_to "棚卸の一覧を見る", stock_takes_path, class: "text-blue-600 underline" %>
+</p>

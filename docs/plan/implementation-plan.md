@@ -671,46 +671,172 @@ Phase 7 からの申し送り (docs/spec/01-domain-model.md 5 節)
 **作業**
 
 - `stock_takes` / `stock_take_entries` の migration とモデル
-- `Stock::FinalizeStockTake` (マイナス差分は FEFO、プラス差分は調整ロット)
+  (`stock_movements.stock_take_entry_id` に複合 `add_foreign_key`、明細の一意制約と check 制約)
+- `Stock::FinalizeStockTake` (マイナス差分は FEFO、プラス差分は調整ロット) と
+  `Stock::WriteStockTakeEntries` (下書きへの実数の書き込み。在庫には触らない)
 - `StockTakesController` + `StockTakes::FinalizationsController`
-- ロット別入力の展開 UI
-- `Stock::RecordDisposal` / `DisposalsController`
+- ロット別入力の展開 UI (`<details>`。JS 無しでも開ける)
+- `Stock::RecordDisposal` / `Stock::DeleteDisposal` / `Disposal` (フォームオブジェクト) /
+  `DisposalsController`。`Stock::Allocator` に `compensate:` / `expired_first:` を足す
+- 取り消しトーストの一般化 (`flash[:undo_usage_record_id]` → `flash[:undo_path]`)
+- 「直近の棚卸日より前の日付です」の警告 (`StockTakeWarning` concern + フォームの補足)
+- 下部タブ中央の「＋記録」を記録メニュー (`/record`) に接続、メニューに「棚卸」を追加
+- 品目詳細の「最近の記録」に廃棄と棚卸の調整を並べ、期限切れロットに「廃棄」の導線を足す
+- `stock:verify` に棚卸明細の検査を追加
 
 **TDD TODO**
 
 ```
-- [ ] 下書きの棚卸は在庫に影響しない
-- [ ] 記録在庫 10・実数 7 の棚卸を確定すると difference は -3
-- [ ] マイナス差分は期限の近いロットから引かれる
-- [ ] 記録在庫 10・実数 12 の棚卸を確定すると kind: adjustment のロットが 1 件
-      (数量 2、期限 nil) 作られる
-- [ ] 差分 0 の明細は StockMovement を作らない
-- [ ] 実数未入力 (counted_quantity が nil) の品目はスキップされる
-- [ ] 保管場所を指定した棚卸には、その場所の品目だけが並ぶ
-- [ ] 廃棄を記録すると在庫が減り、kind: disposal の StockMovement が作られる
-- [ ] 棚卸のマイナス差分は item.last_consumed_on を更新する
-- [ ] 廃棄は item.last_consumed_on を更新しない
+棚卸の確定 (spec/models/stock/finalize_stock_take_spec.rb)
+- [x] 下書きの棚卸は在庫に影響しない
+- [x] 記録在庫 10・実数 7 の棚卸を確定すると difference は -3
+- [x] マイナス差分は期限の近いロットから引かれる (期限切れは最後)
+- [x] マイナス差分が複数ロットに分かれると movement も分かれる
+- [x] 記録在庫 10・実数 12 の棚卸を確定すると kind: adjustment のロットが 1 件
+      (数量 2、期限 nil、価格 nil) 作られる
+- [x] 既存のロットには正の adjustment を足さない (ReviseLot の前提を壊さない)
+- [x] 差分 0 の明細は StockMovement を作らない
+- [x] 実数未入力 (counted_quantity が nil) の品目はスキップされる
+- [x] 確定時点の記録在庫を expected_quantity に取り直す (下書き作成後の変化に追随する)
+- [x] ロット別の明細はそのロットに対する差分として処理する (他のロットからは引かない)
+- [x] ロット別のプラス差分でも新しい調整ロットを作る
+- [x] 品目を id の昇順で lock! する (ロックした id の順で検証)
+- [x] 最初の書き込みより前に品目を行ロックする
+- [x] 二重確定は AlreadyFinalized になり、在庫も二重に動かない
+      (確定前に読んだ古いインスタンスで確かめる。ロックの前に判定すると落ちる)
+- [x] 1 件も数えていない棚卸は確定できない (NothingCounted)
+- [x] ロット別のプラス差分は、そのロットに正の調整を足す (新しいロットを作らない)。
+      もう一度同じ実数で数えると差分 0 に収束する / depleted_at も戻る
+- [x] 合計とロット別が共存していたら、ロット別だけを反映する
+- [x] プラス差分の movement と調整ロットの日付は棚卸日 (過去日でも) になる
+- [x] 在庫を引き当てきれないときは補填せず LedgerInconsistent にする
+- [x] 途中で失敗したら movement も finalized_at も残らない (同一トランザクション)
+- [x] 棚卸のマイナス差分は item.last_consumed_on を更新する
+- [x] 棚卸のプラス差分は item.last_consumed_on を更新しない
+
+棚卸のモデル (spec/models/stock_take_spec.rb, spec/models/stock_take_entry_spec.rb)
+- [x] 棚卸日は必須で未来日は不可。削除済みの保管場所 id では保存できない
+- [x] drafts / finalized / recent_first、last_finalized_counted_on は確定済みだけを見る
+- [x] 保管場所を指定した棚卸には、その場所の品目だけが並ぶ (アーカイブ済みは並ばない)
+- [x] 下書きは削除でき、確定済みは削除できない
+- [x] difference は counted - expected から入れる (フォームの値では上書きされない)
+- [x] 実数は 0 以上・上限あり (4 バイト整数をはみ出しても 500 にしない)
+- [x] 他の品目のロットは数えられない (8 バイト整数をはみ出す id でも 500 にしない)
+- [x] DB の check 制約: 実数の符号、difference と counted - expected の一致、未入力の difference
+- [x] DB の一意制約: 同じ棚卸・品目の合計行は 1 行、品目 × ロットも 1 行
+- [x] 明細と違う品目を指す記録は複合外部キーで弾かれる
+- [x] 確定済みの棚卸の明細は足す・直す・消すのいずれもできない (StockTakeEntry::Finalized)。
+      ただし品目ごと消すときは止めない
+- [x] #current_expected_quantity / #current_difference は「今の記録在庫」との差を返し、
+      在庫が動いた明細は #stock_moved_since_counted? が true になる
+- [x] #large_decrease? は「記録在庫の半分以上かつ 2 以上の減少」で true
+- [x] Item#last_counted_on はこの品目を数えた確定済みの棚卸日 (下書き・未入力・他品目は数えない)
+
+Stock::WriteStockTakeEntries (spec/models/stock/write_stock_take_entries_spec.rb)
+- [x] 入力された品目のぶんだけ明細を作り、在庫は動かさない
+- [x] 書き換えた欄だけを反映する (古い画面を送り直しても、あとから入った実数は消えない)
+- [x] 値を消したとき (元の値あり → 空) だけ明細が消える / 同じ値なら作り直さない
+- [x] ロット別に入れると合計の明細は落とす / 全部空にすれば合計で数え直せる
+- [x] 画面に無かったロットの欄は送られないので触らない
+- [x] 対象外 (他の保管場所・アーカイブ済み)・他の品目のロット id は無視する
+- [x] 数字でない実数は何も書かずに false を返す
+- [x] ヘッダを行ロックしてから書き、確定済みなら RecordNotFound (404 と同じ扱い)
+
+廃棄 (spec/models/stock/record_disposal_spec.rb, delete_disposal_spec.rb)
+- [x] 廃棄を記録すると在庫が減り、kind: disposal の StockMovement が作られる
+- [x] 廃棄は item.last_consumed_on を更新しない
+- [x] ロット指定が無ければ期限切れ → FEFO の順に引く (足りなければ分割)
+- [x] ロットを指定すればそのロットから引く
+- [x] 在庫記録を超える廃棄は 422 で、補填の調整ロットも作らない
+- [x] 指定したロットの残りを超える廃棄は、他のロットから引かずに検証エラーにする
+- [x] 未来日・0・上限超え・知らない理由・他品目のロットは検証エラー (500 にしない)
+- [x] "1.5" や "2abc" は黙って切り捨てず検証エラーになる (数量・ロット id とも)
+- [x] 最初の書き込みより前に品目を行ロックする / ロック前の古い在庫では引き当てない
+- [x] 廃棄を取り消すと在庫が戻り、使い切った日時も消える
+- [x] 取り消しはロック待ちの間に消されていたら RecordNotFound になる
+
+Stock::Allocator (spec/models/stock/allocator_spec.rb)
+- [x] compensate: false なら不足しても調整ロットを作らず、引けた分だけ返す
+- [x] expired_first: true なら期限切れから先に引く (期限切れが無ければ FEFO と同じ並び)
+
+画面 (spec/requests/{stock_takes,disposals,stock_take_warnings}_spec.rb)
+- [x] 棚卸の一覧は下書きと確定済みが分かれて並ぶ
+- [x] 棚卸を作ると入力画面に進む。記録者・確定日時はフォームから変更できない
+- [x] 入力画面にはその保管場所の品目だけが並び、記録在庫が薄く出る
+- [x] ロット別の入力は tracks_expiry かつロットが 2 件以上の品目にだけ出る
+- [x] 実数を入れると明細ができ、在庫はまだ変わらない。空で送り直すと明細が消える
+- [x] 「途中保存」で入力画面に戻り、続きから数えられる
+- [x] ロット別に入れると合計の入力は使われない
+- [x] 他の保管場所の品目・他の品目のロット id は無視する
+- [x] 数字でない実数は 422 で、入力は画面に残る (壊れた counts でも 500 にしない)
+- [x] 古い画面を送り直しても、あとから入った実数は消えない (入力欄に元の値が hidden で付く)
+- [x] すでにロット別に数えたロットは、使い切られても欄を出し続ける (開いた状態で描く)
+- [x] 確認画面に差分サマリ (増 n 件 / 減 n 件) が出る
+- [x] 確認画面は確定で適用される差分 (今の記録在庫との差) を出し、
+      数えたあとに在庫が動いた明細には「数え直してください」を添える
+- [x] 大きく減る差分には注意の印を出す (1 個の減りには出さない)
+- [x] 1 件も数えていなければ確定ボタンを出さず、叩いても確定できない
+- [x] 確定すると在庫が実数に一致し、確定済みの編集・更新・削除・再確定は 404
+- [x] 行を引いてからロックするまでに確定されていたら削除できない (404)
+- [x] ロック待ちの間に確定されていたら 500 にせず、その旨を知らせる
+- [x] 台帳とキャッシュが食い違っていたら 500 にせず、その旨を知らせる
+- [x] 廃棄の入力フォームに理由が 4 つ出る。期限切れロットからはそのロットが選ばれる
+- [x] 廃棄すると取り消し付きのトーストで戻り、取り消すと在庫が戻る
+- [x] ロットをまたぐ廃棄では取り消しのボタンを出さず、最近の記録から消すよう伝える
+- [x] すでに取り消された廃棄 / 使用の記録の取り消しは 404 にせず、その旨を知らせる
+- [x] 品目詳細の最近の記録に廃棄 (取り消し可) と棚卸の調整 (取り消し不可) が並ぶ
+- [x] 記録が増えても品目詳細のクエリ数は増えない
+- [x] 棚卸日より前の日付の使用・購入・廃棄は、保存したうえで警告する (棚卸日と同じ日は警告しない)
+- [x] 下書きの棚卸は警告に数えない。フォームにも直近の棚卸日を出す
+- [x] 警告は品目単位 (この品目を数えていない棚卸・スキップした明細では警告しない)
+
+認可 (spec/requests/authorization_spec.rb)
+- [x] 表に棚卸・廃棄・記録メニューの全ルートを足し、未ログインではログイン画面にリダイレクトされる
+- [x] 未ログインで叩いても StockTake / StockTakeEntry / StockMovement は増えない
+
+画面 (spec/system/{stock_takes,disposals,navigation}_spec.rb)
+- [x] JS が無くても棚卸を一巡できる (保管場所を選ぶ → 数える → 確認 → 確定)
+- [x] 実数が多ければ在庫が増え、調整のロットができる
+- [x] 途中保存して続きから数えられる / 未入力の品目は在庫が変わらない
+- [x] 下書きは削除でき、確定済みには確定・削除のボタンが出ない
+- [x] 期限を管理する品目は details を開いてロット別に数えられる
+- [x] JS が無くても廃棄でき、トーストの「取り消し」と最近の記録から取り消せる
+- [x] 期限切れのロットから廃棄に進める / 在庫を超える廃棄はフォームに戻る
+- [x] 中央の「＋記録」から記録メニューに行け、記録メニューと棚卸で記録タブがハイライトされる
+- [x] 未実装のタブは買い物だけになる
+- [ ] 実ブラウザでは廃棄のトーストから取り消せて、在庫が戻る
+      (js: true。ローカルには Chrome が無く skip されるので、CI で初めて実行される)
+
+rake タスク (spec/tasks/stock_spec.rb)
+- [x] stock:verify は確定済み明細の difference と movements の合計のずれを検出する
+- [x] stock:verify は確定済みなのに movement が無い非ゼロ差分の明細を検出する
+- [x] stock:verify は下書きなのに movement がある明細を検出する
+- [x] stock:verify は棚卸の movement の日付と棚卸日のずれ、ロット別明細の movement が
+      別のロットに付いているもの、棚卸の調整ロットと入庫 movement のずれを検出する
+- [x] stock:verify は出どころの分からない調整 (使用記録にも棚卸明細にも紐づかない) を検出する
+- [x] 実数未入力の明細・プラス差分の調整ロット・廃棄の記録・在庫不足の補填は差異にならない
+- [x] 廃棄には理由が要る (モデルと DB の check 制約の両方で)
 
 Phase 7 / 8 からの申し送り (docs/spec/01-domain-model.md 5 節)
-- [ ] stock_take_entries を作ったら stock_movements.stock_take_entry_id に add_foreign_key する
-      (usage_record_id と同じく on_delete は付けない)
-- [ ] 棚卸の確定で複数の品目をロックするときは id の昇順で lock! する (デッドロック防止)
-- [ ] 棚卸のマイナス差分が紐づくロットは削除できない (Phase 7 のガードが効いていること)
-- [ ] 既存ロットに正の adjustment を付ける設計にするなら、Stock::ReviseLot の
-      「入庫 = 最初の正の movement」という前提と数量の検証を作り直す
-- [ ] 棚卸のプラス差分で作る調整ロットには、使用記録に紐づかない入庫 movement を必ず持たせる
+- [x] stock_take_entries を作ったら stock_movements.stock_take_entry_id に add_foreign_key する
+      (usage_record_id と同じく on_delete は付けない。(stock_take_entry_id, item_id) の複合)
+- [x] 棚卸の確定で複数の品目をロックするときは id の昇順で lock! する (デッドロック防止)
+- [x] 棚卸のマイナス差分が紐づくロットは削除できない (Phase 7 のガードが効いていること)
+- [x] ロット別のプラス差分は既存ロットに正の adjustment を足すので、Stock::ReviseLot の
+      「入庫 = 最初の正の movement」という前提を Lot#inbound_movement に作り直し、
+      数量の検証も「Σ movements − 旧入庫 + 新数量 >= 0」にする (stock:verify も同じ選び方)。
+      確定済みの棚卸で数えたロットは削除できないガードを Lot に足す
+- [x] 棚卸のプラス差分で作る調整ロットには、使用記録に紐づかない入庫 movement を必ず持たせる
       (持たせないと Stock::UsageMovements#discard! が「空の調整ロット」として消してしまう)
-- [ ] 棚卸のマイナス差分の引き当ても Stock::Allocator を使う。ただし Allocator は不足分を
-      必ず補填する (調整ロットを作る) ので、compensate: false のオプションが要る
-- [ ] 廃棄の削除を Stock::DeleteMovement に足すときは、引数の型で分岐せず
-      共通部分 (Stock::UsageMovements) を一般化するか別サービスに分ける
-- [ ] flash[:undo_usage_record_id] とトーストの「取り消し」は使用記録専用。
-      廃棄の取り消しにも使うなら undo_path を渡す形に一般化する
-- [ ] 使用記録に紐づかない kind: usage の movement を作らない (stock:verify が検出する)
-- [ ] 判断 1 の「直近の棚卸日より前の日付です」の警告を、使用記録と購入のフォームに足す
+- [x] 棚卸のマイナス差分の引き当ても Stock::Allocator を使う (compensate: false)
+- [x] 廃棄の削除は Stock::DeleteMovement に混ぜず Stock::DeleteDisposal に分ける
+- [x] flash[:undo_usage_record_id] を flash[:undo_path] に一般化し、使用記録と廃棄で共用する
+- [x] 使用記録に紐づかない kind: usage の movement を作らない (stock:verify が検出する)
+- [x] 判断 1 の「直近の棚卸日より前の日付です」の警告を、使用記録・購入・廃棄に足す
 ```
 
 **動作確認**: 保管場所を選んで数件を数え、確定すると在庫が実数に一致する。
+期限切れロットから廃棄を記録して取り消せる。`stock:verify` が差異 0 を報告する。
 
 ---
 
@@ -751,6 +877,16 @@ Phase 7 / 8 からの申し送り (docs/spec/01-domain-model.md 5 節)
 - [ ] SnapshotBuilder の unit_usage は窓内の使用記録の数量の中央値 (無ければ 1)
 - [ ] SnapshotBuilder の anchor_on は最後の消費イベント日 (棚卸のマイナス差分を含む)
 - [ ] 消費イベントが無い品目の anchor_on は tracking_started_on
+
+Phase 9 からの申し送り (docs/spec/01-domain-model.md 5 節)
+- [ ] 棚卸のマイナス差分は counted_on の 1 日に全量が消費として計上される
+      (3 か月ぶんの減りが 1 日に乗る。窓は 90 日以上あるので合計は歪まないが、
+      その日の前後だけを見ると消費が極端に見える)。u (1 回あたりの使用数) には入らない
+- [ ] 1 回の棚卸で movement が複数行に分かれても、消費イベントは棚卸日の 1 件
+- [ ] 過去日の棚卸を確定すると tracking_started_on が前に動くことがある (窓の下限が伸びる)
+- [ ] 棚卸のプラス差分で作る調整ロットは期限 NULL なので、期限判定には出ないが在庫 q には入る
+- [ ] 品目ごとの最終棚卸日は Item#last_counted_on を使い回す
+      (確定済み・実数を入れた明細だけ。「直近の棚卸日より前です」の警告と同じ定義)
 - [ ] SnapshotBuilder は estimation_mode を Symbol (:auto / :manual / :none) で Snapshot に渡す
       (Forecast::Pace は文字列や整数を ArgumentError にする)
 - [ ] BatchForecaster の結果は、各品目を ItemForecaster で個別に判定した結果と一致する

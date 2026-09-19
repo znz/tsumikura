@@ -1,0 +1,123 @@
+<% content_for :title, "棚卸 (#{@stock_take.storage_location_name})" %>
+
+<p class="text-sm">
+  <%= link_to "← 棚卸", stock_takes_path, class: "text-blue-600 underline" %>
+</p>
+
+<h1 class="mt-2 text-2xl font-bold text-slate-900">
+  <%= @stock_take.storage_location_name %>
+  <% if @stock_take.finalized? %>
+    <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-sm font-medium text-slate-600">確定済み</span>
+  <% else %>
+    <span class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-sm font-medium text-amber-800">下書き</span>
+  <% end %>
+</h1>
+<p class="<%= hint_classes %>">
+  棚卸日: <%= l(@stock_take.counted_on) %> ・ 記録者: <%= @stock_take.user.name %>
+  <% if @stock_take.finalized? %>
+    ・ 確定: <%= l(@stock_take.finalized_at) %>
+  <% end %>
+</p>
+<% if @stock_take.note.present? %>
+  <p class="mt-2 whitespace-pre-line text-sm text-slate-900"><%= @stock_take.note %></p>
+<% end %>
+
+<%#
+  差分サマリ (docs/spec/03-screens.md 画面 6 の (4))。
+  下書きのあいだは「確定したらこうなる」値を出す (確定は記録在庫を取り直すので、
+  数えたあとに使用・購入があると下書き時点の差分とは食い違う)。
+%>
+<section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="差分のまとめ">
+  <h2 class="font-bold text-slate-900">差分のまとめ</h2>
+  <dl class="mt-3 grid grid-cols-3 gap-2 text-center">
+    <div>
+      <dt class="text-sm text-slate-500">増えた</dt>
+      <dd class="text-xl font-bold text-slate-900"><%= @increased_count %> 件</dd>
+    </div>
+    <div>
+      <dt class="text-sm text-slate-500">減った</dt>
+      <dd class="text-xl font-bold text-slate-900"><%= @decreased_count %> 件</dd>
+    </div>
+    <div>
+      <dt class="text-sm text-slate-500">数えた</dt>
+      <dd class="text-xl font-bold text-slate-900"><%= @counted_count %> 件</dd>
+    </div>
+  </dl>
+</section>
+
+<section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="棚卸の明細">
+  <h2 class="font-bold text-slate-900">数えた品目</h2>
+
+  <% if @entries.empty? %>
+    <p class="mt-3 text-sm text-slate-600">まだ 1 件も数えていません。</p>
+  <% else %>
+    <ul class="mt-3 divide-y divide-slate-200" aria-label="棚卸の明細一覧">
+      <% @entries.each do |entry| %>
+        <% expected = stock_take_expected(entry, @live) %>
+        <% difference = stock_take_difference(entry, @live) %>
+        <li class="flex items-start justify-between gap-3 py-3">
+          <div class="min-w-0">
+            <p class="font-medium text-slate-900">
+              <%= entry.item.name %>
+              <% if entry.lot %>
+                <span class="text-sm font-normal text-slate-500">
+                  (<%= entry.lot.expires_on ? "期限 #{l(entry.lot.expires_on)}" : "期限なし" %>)
+                </span>
+              <% end %>
+            </p>
+            <p class="mt-1 text-sm text-slate-500">
+              記録 <%= expected %> → 実数 <%= entry.counted? ? entry.counted_quantity : "—" %> <%= entry.item.unit %>
+            </p>
+
+            <%#
+              数えてから確定までに使用・購入があると、確定は「今の記録在庫」との差を取る。
+              数えたあとに使った・買ったぶんなら数え直してもらう
+            %>
+            <% if @live && entry.stock_moved_since_counted? %>
+              <p class="mt-1 text-sm text-amber-700">
+                数えたあとに在庫の記録が動いています
+                (<%= entry.expected_quantity %> → <%= expected %>)。
+                数えたあとに使った・買ったぶんなら数え直してください。
+              </p>
+            <% end %>
+
+            <%# 打ち間違いは消費として予測に残り続けるので、大きく減る差分は目立たせる %>
+            <% if entry.large_decrease?(difference, expected) %>
+              <p class="mt-1 text-sm text-red-700">
+                大きく減っています。数え間違いでないか確かめてください。
+              </p>
+            <% end %>
+          </div>
+          <p class="shrink-0 text-sm font-medium <%= entry.counted? && !difference.zero? ? "text-red-700" : "text-slate-500" %>">
+            <%= stock_take_difference_text(entry, difference) %>
+          </p>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+</section>
+
+<% if @stock_take.finalized? %>
+  <p class="<%= hint_classes %>">
+    確定済みの棚卸は編集・削除できません。数え直すときは新しい棚卸を始めてください。
+  </p>
+<% else %>
+  <div class="mt-6 space-y-2">
+    <%#
+      1 件も数えていない棚卸は確定させない。在庫は動かないのに棚卸日だけが進み、
+      以降の記録に「直近の棚卸日より前です」の警告が出てしまう
+    %>
+    <% if @counted_count.zero? %>
+      <p class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        まだ 1 件も数えていないので確定できません。
+      </p>
+    <% else %>
+      <%# 確定は finalized_at を update で permit しないために別のコントローラに分けている %>
+      <%= button_to "この内容で確定する", stock_take_finalization_path(@stock_take), method: :post,
+            form: { data: { turbo_confirm: "棚卸を確定して在庫を実数に合わせます。よろしいですか?" } },
+            class: primary_button_classes %>
+    <% end %>
+    <%= link_to "数えるのを続ける", edit_stock_take_path(@stock_take),
+          class: secondary_button_classes("w-full") %>
+  </div>
+<% end %>

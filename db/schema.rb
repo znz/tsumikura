@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_20_000008) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_000011) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -285,9 +285,43 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000008) do
     t.index ["stock_take_entry_id"], name: "index_stock_movements_on_stock_take_entry_id"
     t.index ["usage_record_id"], name: "index_stock_movements_on_usage_record_id"
     t.index ["user_id"], name: "index_stock_movements_on_user_id"
-    t.check_constraint "disposal_reason IS NULL OR kind = 3", name: "stock_movements_disposal_reason_only_for_disposal"
+    t.check_constraint "(kind = 3) = (disposal_reason IS NOT NULL)", name: "stock_movements_disposal_reason_matches_kind"
     t.check_constraint "kind = 0 AND quantity > 0 OR (kind = ANY (ARRAY[1, 3])) AND quantity < 0 OR kind = 2", name: "stock_movements_quantity_sign_matches_kind"
     t.check_constraint "quantity <> 0", name: "stock_movements_quantity_not_zero"
+  end
+
+  create_table "stock_take_entries", force: :cascade do |t|
+    t.integer "counted_quantity"
+    t.datetime "created_at", null: false
+    t.integer "difference"
+    t.integer "expected_quantity", default: 0, null: false
+    t.bigint "item_id", null: false
+    t.bigint "lot_id"
+    t.bigint "stock_take_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["id", "item_id"], name: "index_stock_take_entries_on_id_and_item_id", unique: true
+    t.index ["item_id"], name: "index_stock_take_entries_on_item_id"
+    t.index ["lot_id"], name: "index_stock_take_entries_on_lot_id"
+    t.index ["stock_take_id", "item_id", "lot_id"], name: "index_stock_take_entries_on_take_and_item_and_lot", unique: true, where: "(lot_id IS NOT NULL)"
+    t.index ["stock_take_id", "item_id"], name: "index_stock_take_entries_on_take_and_item_total", unique: true, where: "(lot_id IS NULL)"
+    t.index ["stock_take_id"], name: "index_stock_take_entries_on_stock_take_id"
+    t.check_constraint "counted_quantity IS NULL AND difference IS NULL OR counted_quantity IS NOT NULL AND difference = (counted_quantity - expected_quantity)", name: "stock_take_entries_difference_matches"
+    t.check_constraint "counted_quantity IS NULL OR counted_quantity >= 0", name: "stock_take_entries_counted_not_negative"
+    t.check_constraint "expected_quantity >= 0", name: "stock_take_entries_expected_not_negative"
+  end
+
+  create_table "stock_takes", force: :cascade do |t|
+    t.date "counted_on", null: false
+    t.datetime "created_at", null: false
+    t.datetime "finalized_at"
+    t.text "note"
+    t.bigint "storage_location_id"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["counted_on"], name: "index_stock_takes_on_counted_on"
+    t.index ["finalized_at"], name: "index_stock_takes_on_finalized_at"
+    t.index ["storage_location_id", "counted_on"], name: "index_stock_takes_on_storage_location_id_and_counted_on"
+    t.index ["user_id"], name: "index_stock_takes_on_user_id"
   end
 
   create_table "storage_locations", force: :cascade do |t|
@@ -354,8 +388,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000008) do
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "stock_movements", "items"
   add_foreign_key "stock_movements", "lots", column: ["lot_id", "item_id"], primary_key: ["id", "item_id"]
+  add_foreign_key "stock_movements", "stock_take_entries", column: ["stock_take_entry_id", "item_id"], primary_key: ["id", "item_id"]
   add_foreign_key "stock_movements", "usage_records", column: ["usage_record_id", "item_id"], primary_key: ["id", "item_id"]
   add_foreign_key "stock_movements", "users", on_delete: :restrict
+  add_foreign_key "stock_take_entries", "items"
+  add_foreign_key "stock_take_entries", "lots", column: ["lot_id", "item_id"], primary_key: ["id", "item_id"]
+  add_foreign_key "stock_take_entries", "stock_takes"
+  add_foreign_key "stock_takes", "storage_locations", on_delete: :nullify
+  add_foreign_key "stock_takes", "users", on_delete: :restrict
   add_foreign_key "usage_records", "item_purposes", column: ["item_purpose_id", "item_id"], primary_key: ["id", "item_id"], on_delete: :restrict
   add_foreign_key "usage_records", "items"
   add_foreign_key "usage_records", "users", on_delete: :restrict

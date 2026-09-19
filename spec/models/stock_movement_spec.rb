@@ -41,8 +41,8 @@ RSpec.describe StockMovement, type: :model do
       end
 
       it "disposal (廃棄) は負でなければならない" do
-        expect(build(:stock_movement, kind: :disposal, quantity: -1)).to be_valid
-        expect(build(:stock_movement, kind: :disposal, quantity: 1)).not_to be_valid
+        expect(build(:stock_movement, kind: :disposal, quantity: -1, disposal_reason: :expired)).to be_valid
+        expect(build(:stock_movement, kind: :disposal, quantity: 1, disposal_reason: :expired)).not_to be_valid
       end
 
       it "adjustment (調整) はプラスもマイナスもありうる" do
@@ -72,10 +72,12 @@ RSpec.describe StockMovement, type: :model do
       end
     end
 
-    it "廃棄理由は廃棄の記録にだけ指定できる" do
+    # 理由の無い廃棄は「なんとなく減った」を廃棄で片づけた記録になり、
+    # あとから何が起きたのか分からなくなる
+    it "廃棄理由は廃棄の記録にだけ指定でき、廃棄には必ず要る" do
       expect(build(:stock_movement, kind: :usage, quantity: -1, disposal_reason: :expired)).not_to be_valid
       expect(build(:stock_movement, kind: :disposal, quantity: -1, disposal_reason: :expired)).to be_valid
-      expect(build(:stock_movement, kind: :disposal, quantity: -1, disposal_reason: nil)).to be_valid
+      expect(build(:stock_movement, kind: :disposal, quantity: -1, disposal_reason: nil)).not_to be_valid
     end
 
     # 集計用に非正規化している item_id が lot とずれると、在庫の合計が壊れる
@@ -170,6 +172,21 @@ RSpec.describe StockMovement, type: :model do
 
       expect {
         described_class.transaction(requires_new: true) { movement.update_column(:disposal_reason, 0) }
+      }.to raise_error(ActiveRecord::StatementInvalid)
+    end
+
+    it "理由を消す / 理由の無い廃棄にする UPDATE も check 制約で弾かれる" do
+      movement = create(:stock_movement, kind: :disposal, quantity: -1, disposal_reason: :expired)
+
+      expect {
+        described_class.transaction(requires_new: true) { movement.update_column(:disposal_reason, nil) }
+      }.to raise_error(ActiveRecord::StatementInvalid)
+
+      usage = create(:stock_movement, kind: :usage, quantity: -1)
+      expect {
+        described_class.transaction(requires_new: true) {
+          usage.update_column(:kind, described_class.kinds[:disposal])
+        }
       }.to raise_error(ActiveRecord::StatementInvalid)
     end
 

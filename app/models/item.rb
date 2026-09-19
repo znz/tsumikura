@@ -14,8 +14,10 @@ class Item < ApplicationRecord
   # 品目は物理削除しない (アーカイブする) が、消したときに在庫の記録だけが残らないようにする。
   # 宣言の順がそのまま削除の順になるので、参照する側から先に消す:
   #   movement → ロット (逆だと Lot#ensure_not_consumed に止められて中途半端に壊れる)
+  #   movement → 棚卸明細 (逆だと StockTakeEntry の restrict_with_error に止められる)
   #   使用記録 → 用途 (逆だと ItemPurpose#ensure_not_used と外部キーに止められる)
   has_many :stock_movements, dependent: :destroy
+  has_many :stock_take_entries, dependent: :destroy
   has_many :lots, dependent: :destroy
   has_many :usage_records, dependent: :destroy
   has_many :item_purposes, -> { order(:position, :id) }, dependent: :destroy
@@ -87,6 +89,17 @@ class Item < ApplicationRecord
 
   def archived?
     archived_at.present?
+  end
+
+  # この品目を実際に数えた、直近の確定済み棚卸日 (docs/spec/01-domain-model.md 判断 1)。
+  # 「直近の棚卸日より前の日付です」の警告に使う。棚卸は保管場所ごとなので、
+  # 品目単位で見ないと「冷蔵庫を数えただけ」で洗剤の購入にまで警告が出てしまう。
+  # 下書きと、実数を入れなかった (スキップした) 明細は数えない
+  def last_counted_on
+    StockTake.finalized.joins(:stock_take_entries)
+      .where(stock_take_entries: { item_id: id })
+      .where.not(stock_take_entries: { counted_quantity: nil })
+      .maximum(:counted_on)
   end
 
   # 品目は物理削除しない (docs/spec/01-domain-model.md 3 節)。

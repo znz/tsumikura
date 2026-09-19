@@ -8,6 +8,28 @@ ja:
     formats:
       default: "%Y/%m/%d %H:%M"
 
+  # 廃棄の入力フォーム (DB のテーブルを持たない ActiveModel)
+  activemodel:
+    models:
+      disposal: 廃棄の記録
+    attributes:
+      disposal:
+        quantity: 数量
+        occurred_on: 廃棄日
+        lot_id: ロット
+        disposal_reason: 理由
+        note: メモ
+    errors:
+      models:
+        disposal:
+          attributes:
+            occurred_on:
+              future: に未来の日付は指定できません
+            quantity:
+              # 廃棄は「実物を捨てた」記録なので、在庫記録を超える廃棄は作らない
+              exceeds_lot: は、このロットの残り (%{remaining}) より多くできません
+              exceeds_stock: は、在庫の記録 (%{available}) より多くできません
+
   activerecord:
     models:
       user: ユーザー
@@ -20,6 +42,8 @@ ja:
       lot: 購入の記録
       stock_movement: 在庫の記録
       usage_record: 使用の記録
+      stock_take: 棚卸
+      stock_take_entry: 棚卸の明細
     attributes:
       category:
         name: 名前
@@ -93,6 +117,19 @@ ja:
         disposal_reason: 廃棄理由
         user: 記録者
         note: メモ
+      stock_take:
+        counted_on: 棚卸日
+        storage_location: 保管場所
+        storage_location_id: 保管場所
+        user: 記録者
+        note: メモ
+        finalized_at: 確定日時
+      stock_take_entry:
+        item: 品目
+        lot: ロット
+        expected_quantity: 記録在庫
+        counted_quantity: 実数
+        difference: 差分
       user:
         name: 表示名
         email_address: メールアドレス
@@ -131,6 +168,8 @@ ja:
             base:
               # 棚卸のマイナス差分を消すと、確定済みの棚卸の記録と消費ペースまで壊れる
               consumed: 使用・廃棄・棚卸の記録があるロットは削除できません
+              # 差分 0 やプラス差分の明細には負の movement が付かないので、別に止める
+              counted: 確定済みの棚卸で数えたロットは削除できません
         item_purpose:
           attributes:
             base:
@@ -152,6 +191,18 @@ ja:
               must_be_negative: は出庫の記録なので負の数でなければなりません
             item:
               mismatched_lot: がロットの品目と一致していません
+        stock_take:
+          attributes:
+            counted_on:
+              # 消費イベントが必ず今日以前にあることを予測が前提にしている
+              future: に未来の日付は指定できません
+            base:
+              # 確定済みは調整 movement の履歴が残るので削除しない
+              finalized: 確定済みの棚卸は削除できません
+        stock_take_entry:
+          attributes:
+            lot:
+              mismatched_item: がこの品目のロットではありません
 
   # 役割の表示名。ActiveRecord の enum には既定の i18n が無いので独自に持つ
   # (app/helpers/application_helper.rb の user_role_label)
@@ -176,3 +227,10 @@ ja:
         usage: 使用
         adjustment: 調整
         disposal: 廃棄
+        # 棚卸の確定で入った調整は、ただの「調整」ではなく由来が分かるように出す
+        stock_take: 棚卸
+      disposal_reason:
+        expired: 期限切れ
+        damaged: 破損
+        lost: 紛失
+        other: その他

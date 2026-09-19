@@ -34,16 +34,25 @@ module ItemDetails
       @purposes = @item.tracks_purposes? ? @item.item_purposes.active.includes(:usage_records).to_a : []
     end
 
-    # 使用と購入を時系列で混ぜる。調整ロット (在庫不足の補填・棚卸) は
-    # ユーザーの操作ではないので出さない。
-    # 行ごとに用途・店舗を出すので、どちらも includes しないと記録の数だけクエリが増える
+    # 使用・購入・廃棄・棚卸の調整を時系列で混ぜる。
+    # 在庫不足の補填で作られた調整ロットと movement はユーザーの操作ではないので出さない
+    # (補填したことはトーストで伝えている)。
+    # 行ごとに用途・店舗・棚卸を出すので、includes しないと記録の数だけクエリが増える
     def recent_records
       usages = @item.usage_records.includes(:item_purpose).recent_first.limit(RECENT_RECORDS_LIMIT).to_a
       purchases = @item.lots.recordable.includes(:store).recent_first.limit(RECENT_RECORDS_LIMIT).to_a
 
-      (usages + purchases)
+      (usages + purchases + recent_movements)
         .sort_by { |record| [ record.recorded_on, record.created_at ] }
         .reverse
         .take(RECENT_RECORDS_LIMIT)
+    end
+
+    # 廃棄と、棚卸の確定で入った調整 (明細に紐づく行だけ)
+    def recent_movements
+      @item.stock_movements.kind_disposal
+        .or(@item.stock_movements.recorded_adjustments)
+        .includes(:stock_take_entry)
+        .recent_first.limit(RECENT_RECORDS_LIMIT).to_a
     end
 end

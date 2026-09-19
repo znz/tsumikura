@@ -13,5 +13,5 @@
 <% end %>
 
 <%= turbo_stream.append "toasts" do %>
-  <%= render "layouts/toast", message: @toast_message, usage_record_id: @undo_usage_record_id %>
+  <%= render "layouts/toast", message: @toast_message, undo_path: @undo_path %>
 <% end %>

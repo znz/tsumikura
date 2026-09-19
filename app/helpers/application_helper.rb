@@ -35,10 +35,20 @@ module ApplicationHelper
   end
 
   # 下部タブの「品目」は、一覧だけでなく詳細やフォーム、品目配下の記録画面でもハイライトする
-  ITEM_TAB_CONTROLLERS = %w[ items lots usage_records item_purposes ].freeze
+  ITEM_TAB_CONTROLLERS = %w[ items lots usage_records item_purposes disposals ].freeze
+  # 下部タブの中央「記録」は、記録メニューと棚卸でハイライトする
+  RECORD_TAB_CONTROLLERS = %w[ record_menus stock_takes ].freeze
 
   def items_tab_current?
-    ITEM_TAB_CONTROLLERS.any? do |name|
+    tab_current?(ITEM_TAB_CONTROLLERS)
+  end
+
+  def record_tab_current?
+    tab_current?(RECORD_TAB_CONTROLLERS)
+  end
+
+  def tab_current?(controllers)
+    controllers.any? do |name|
       controller_path == name || controller_path.start_with?("#{name}/")
     end
   end
@@ -56,11 +66,56 @@ module ApplicationHelper
     t("enums.lot.kind.#{lot.kind}")
   end
 
+  # 在庫の記録の種別 (入庫 / 使用 / 調整 / 廃棄)。棚卸の調整は「棚卸」と出す
+  def movement_kind_label(movement)
+    return t("enums.stock_movement.kind.stock_take") if movement.stock_take_entry_id.present?
+
+    t("enums.stock_movement.kind.#{movement.kind}")
+  end
+
+  def disposal_reason_label(movement)
+    t("enums.stock_movement.disposal_reason.#{movement.disposal_reason}")
+  end
+
+  # 増減が一目で分かるよう符号を付ける (棚卸の調整は増にも減にもなる)
+  def signed_quantity(movement)
+    quantity = movement.quantity
+
+    quantity.positive? ? "+#{quantity}" : "−#{quantity.abs}"
+  end
+
   # 使用を記録するときのロット選択肢。期限で選ぶので期限を先に出す
   def lot_option_label(lot, item)
     expiry = lot.expires_on ? "期限 #{l(lot.expires_on)}" : "期限なし"
 
     "#{expiry} ・ 残り #{lot.remaining_quantity} #{item.unit} (#{l(lot.acquired_on)} 購入)"
+  end
+
+  # 棚卸の実数の入力値。検証エラーで描き直すときは送られた値を優先し (入力を失わせない)、
+  # ふだんは保存済みの明細の実数を出す。
+  # 壊れた形のパラメータ (counts[5]=abc など) で 500 にしないよう、Hash 以外はたどらない
+  def stock_take_count_value(counts, entry, *keys)
+    submitted = keys.reduce(counts) { |value, key| value.is_a?(Hash) ? value[key] : nil }
+
+    submitted.is_a?(String) ? submitted : entry&.counted_quantity
+  end
+
+  # 確認画面 (下書き) は確定で実際に使われる「今の記録在庫」を見せ、
+  # 確定済みは確定した時点の値をそのまま見せる
+  def stock_take_expected(entry, live)
+    live ? entry.current_expected_quantity : entry.expected_quantity
+  end
+
+  def stock_take_difference(entry, live)
+    live ? entry.current_difference : entry.difference
+  end
+
+  # 棚卸の差分の表示 (増減が一目で分かるよう符号を付ける)
+  def stock_take_difference_text(entry, difference)
+    return "未入力" unless entry.counted?
+    return "変化なし" if difference.zero?
+
+    difference.positive? ? "+#{difference}" : "−#{difference.abs}"
   end
 
   # 単価の表示。10 円未満は四捨五入すると 0 円に潰れるので小数 1 桁で出す

@@ -1,0 +1,62 @@
+<% content_for :title, "廃棄を記録" %>
+
+<p class="text-sm">
+  <%= link_to "← #{@item.name}", item_path(@item), class: "text-blue-600 underline" %>
+</p>
+
+<h1 class="mt-2 text-2xl font-bold text-slate-900">廃棄を記録</h1>
+<p class="<%= hint_classes %>">
+  「<%= @item.name %>」の在庫が減ります (現在 <%= @item.current_quantity %> <%= @item.unit %>)。
+  廃棄は「使った」ではないので、使うペースの計算には入りません。
+</p>
+
+<%= form_with model: @disposal, url: item_disposals_path(@item), class: "mt-6 space-y-5" do |form| %>
+  <%= render "form_errors", record: @disposal %>
+
+  <div>
+    <%= form.label :quantity, class: label_classes %>
+    <%= form.number_field :quantity, min: 1, inputmode: "numeric", required: true,
+          class: field_classes("text-center text-lg") %>
+  </div>
+
+  <fieldset>
+    <legend class="<%= label_classes %>"><%= Disposal.human_attribute_name(:disposal_reason) %></legend>
+    <div class="mt-2 flex flex-wrap gap-2">
+      <% Disposal.reasons.each do |reason| %>
+        <label class="flex min-h-11 items-center gap-2 rounded-full border border-slate-300 px-4">
+          <%= form.radio_button :disposal_reason, reason, class: "size-5" %>
+          <span class="text-sm text-slate-700"><%= t("enums.stock_movement.disposal_reason.#{reason}") %></span>
+        </label>
+      <% end %>
+    </div>
+  </fieldset>
+
+  <div>
+    <%= form.label :occurred_on, class: label_classes %>
+    <%# 未来日は記録できない (docs/spec/01-domain-model.md 2 節) %>
+    <%= form.date_field :occurred_on, max: Date.current, required: true, class: field_classes %>
+    <%= render "stock_take_hint", item: @item %>
+  </div>
+
+  <% if @lots.any? %>
+    <%#
+      捨てるのは古いものからなので、指定が無ければ 期限切れ → 期限の近い順に引く。
+      指定したロットの残りを超える廃棄は、他のロットからは引かずに検証エラーにする
+    %>
+    <div>
+      <%= form.label :lot_id, class: label_classes %>
+      <%= form.select :lot_id,
+            options_for_select(@lots.map { |lot| [ lot_option_label(lot, @item), lot.id.to_s ] },
+              @disposal.lot_id.to_s),
+            { include_blank: "自動 (期限切れ → 期限が近い順)" }, class: field_classes %>
+      <p class="<%= hint_classes %>">どのロットを捨てたか分かるときだけ選びます。</p>
+    </div>
+  <% end %>
+
+  <div>
+    <%= form.label :note, class: label_classes %>
+    <%= form.text_area :note, rows: 2, class: field_classes %>
+  </div>
+
+  <%= form.submit "廃棄を記録する", class: primary_button_classes %>
+<% end %>

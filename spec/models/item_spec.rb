@@ -452,4 +452,45 @@ RSpec.describe Item, type: :model do
       expect(item.effective_expiry_warning_days).to eq 14
     end
   end
+
+  # 「直近の棚卸日より前の日付です」の警告に使う (docs/spec/01-domain-model.md 判断 1)。
+  # 棚卸は保管場所ごとなので、判定は品目単位で行う
+  describe "#last_counted_on" do
+    let(:item) { create(:item) }
+
+    # 確定済みの棚卸の明細は作れない (StockTakeEntry::Finalized) ので、
+    # 実際の順番どおり「数えてから確定する」
+    def count_in_stock_take(counted_on:, target: item, counted: 1, finalized: true)
+      stock_take = create(:stock_take, counted_on: counted_on)
+      create(:stock_take_entry, stock_take: stock_take, item: target, counted_quantity: counted)
+      stock_take.update_column(:finalized_at, Time.current) if finalized
+      stock_take
+    end
+
+    it "この品目を数えた確定済みの棚卸日の最大値を返す" do
+      count_in_stock_take(counted_on: Date.current - 10)
+      count_in_stock_take(counted_on: Date.current - 3)
+
+      expect(item.last_counted_on).to eq Date.current - 3
+    end
+
+    it "下書きの棚卸は数えない (在庫に影響していない)" do
+      count_in_stock_take(counted_on: Date.current, finalized: false)
+
+      expect(item.last_counted_on).to be_nil
+    end
+
+    it "実数を入れなかった (スキップした) 明細は数えない" do
+      count_in_stock_take(counted_on: Date.current, counted: nil)
+
+      expect(item.last_counted_on).to be_nil
+    end
+
+    # 冷蔵庫を数えただけで、洗剤の記録にまで警告が出てしまわないように
+    it "ほかの品目だけを数えた棚卸は数えない" do
+      count_in_stock_take(counted_on: Date.current, target: create(:item))
+
+      expect(item.last_counted_on).to be_nil
+    end
+  end
 end

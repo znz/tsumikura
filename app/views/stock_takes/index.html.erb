@@ -1,0 +1,53 @@
+<% content_for :title, "棚卸" %>
+
+<div class="flex items-start justify-between gap-2">
+  <h1 class="text-2xl font-bold text-slate-900">棚卸</h1>
+  <%= link_to "棚卸を始める", new_stock_take_path, class: add_link_classes("shrink-0") %>
+</div>
+<p class="<%= hint_classes %>">
+  保管場所ごとに実物を数えて、記録の在庫を実数に合わせます。
+</p>
+
+<h2 class="mt-6 text-sm font-medium text-slate-500">数えている途中 (下書き)</h2>
+
+<% if @drafts.any? %>
+  <ul class="mt-2 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white"
+      aria-label="下書きの棚卸一覧">
+    <% @drafts.each do |stock_take| %>
+      <li>
+        <%= link_to edit_stock_take_path(stock_take),
+              class: "flex min-h-14 items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50" do %>
+          <span class="min-w-0">
+            <span class="block truncate font-medium text-slate-900"><%= stock_take.storage_location_name %></span>
+            <span class="block text-sm text-slate-500"><%= l(stock_take.counted_on) %> ・ <%= stock_take.user.name %></span>
+          </span>
+          <span class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">下書き</span>
+        <% end %>
+      </li>
+    <% end %>
+  </ul>
+<% else %>
+  <p class="mt-2 text-sm text-slate-600">数えている途中の棚卸はありません。</p>
+<% end %>
+
+<h2 class="mt-6 text-sm font-medium text-slate-500">確定済み</h2>
+
+<% if @finalized.any? %>
+  <ul class="mt-2 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white"
+      aria-label="確定済みの棚卸一覧">
+    <% @finalized.each do |stock_take| %>
+      <li>
+        <%= link_to stock_take_path(stock_take),
+              class: "flex min-h-14 items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50" do %>
+          <span class="min-w-0">
+            <span class="block truncate font-medium text-slate-900"><%= stock_take.storage_location_name %></span>
+            <span class="block text-sm text-slate-500"><%= l(stock_take.counted_on) %> ・ <%= stock_take.user.name %></span>
+          </span>
+          <span class="shrink-0 text-sm text-slate-500">確定済み</span>
+        <% end %>
+      </li>
+    <% end %>
+  </ul>
+<% else %>
+  <p class="mt-2 text-sm text-slate-600">確定済みの棚卸はまだありません。</p>
+<% end %>

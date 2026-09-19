@@ -1,0 +1,34 @@
+<% content_for :title, "棚卸を始める" %>
+
+<p class="text-sm">
+  <%= link_to "← 棚卸", stock_takes_path, class: "text-blue-600 underline" %>
+</p>
+
+<h1 class="mt-2 text-2xl font-bold text-slate-900">棚卸を始める</h1>
+<p class="<%= hint_classes %>">
+  数える場所と日付を決めます。確定するまで在庫は変わりません。
+</p>
+
+<%= form_with model: @stock_take, url: stock_takes_path, class: "mt-6 space-y-5" do |form| %>
+  <%= render "form_errors", record: @stock_take %>
+
+  <div>
+    <%= form.label :storage_location_id, class: label_classes %>
+    <%= form.collection_select :storage_location_id, @storage_locations, :id, :name,
+          { include_blank: "すべての保管場所" }, class: field_classes %>
+    <p class="<%= hint_classes %>">場所を選ぶと、その場所の品目だけが並びます。</p>
+  </div>
+
+  <div>
+    <%= form.label :counted_on, class: label_classes %>
+    <%# 未来日は記録できない (docs/spec/01-domain-model.md 2 節) %>
+    <%= form.date_field :counted_on, max: Date.current, required: true, class: field_classes %>
+  </div>
+
+  <div>
+    <%= form.label :note, class: label_classes %>
+    <%= form.text_area :note, rows: 2, class: field_classes %>
+  </div>
+
+  <%= form.submit "数え始める", class: primary_button_classes %>
+<% end %>

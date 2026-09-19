@@ -1,0 +1,56 @@
+<%# locals: (record:, item:) %>
+<%#
+  「最近の記録」の 1 行 (docs/spec/03-screens.md 画面 3)。
+  使用記録 (UsageRecord) / 購入 (Lot) / 廃棄・棚卸の調整 (StockMovement) の 3 種類を
+  同じ時系列に並べる。棚卸の調整は取り消せない (棚卸の側から数え直す)。
+%>
+<li class="flex items-start justify-between gap-3 py-3">
+  <div class="min-w-0">
+    <% case record %>
+    <% when UsageRecord %>
+      <p class="font-medium text-slate-900">
+        使った <%= record.quantity %> <%= item.unit %>
+        <% if record.item_purpose %>
+          <span class="text-sm font-normal text-slate-500">(<%= record.item_purpose.name %>)</span>
+        <% end %>
+      </p>
+    <% when Lot %>
+      <p class="font-medium text-slate-900">
+        <%= lot_kind_label(record) %> <%= record.initial_quantity %> <%= item.unit %>
+        <% if record.store %>
+          <span class="text-sm font-normal text-slate-500"><%= record.store.name %></span>
+        <% end %>
+      </p>
+    <% else %>
+      <p class="font-medium text-slate-900">
+        <%= movement_kind_label(record) %> <%= signed_quantity(record) %> <%= item.unit %>
+        <% if record.kind_disposal? && record.disposal_reason %>
+          <span class="text-sm font-normal text-slate-500">(<%= disposal_reason_label(record) %>)</span>
+        <% end %>
+      </p>
+    <% end %>
+    <p class="mt-1 text-sm text-slate-500"><%= l(record.recorded_on) %></p>
+  </div>
+
+  <div class="flex shrink-0 items-center gap-2">
+    <% case record %>
+    <% when UsageRecord %>
+      <%= link_to "編集", edit_usage_record_path(record), class: secondary_button_classes %>
+      <%= button_to "削除", usage_record_path(record), method: :delete,
+            form: { data: { turbo_confirm: "この使用の記録を削除します。よろしいですか?" } },
+            class: secondary_button_classes("cursor-pointer text-red-700") %>
+    <% when Lot %>
+      <%= link_to "編集", edit_lot_path(record), class: secondary_button_classes %>
+    <% else %>
+      <% if record.kind_disposal? %>
+        <%= button_to "取り消し", disposal_path(record), method: :delete,
+              form: { data: { turbo_confirm: "この廃棄の記録を取り消します。よろしいですか?" } },
+              class: secondary_button_classes("cursor-pointer text-red-700") %>
+      <% elsif record.stock_take_entry %>
+        <%# 棚卸の調整は単体で取り消さない (数え直すなら新しい棚卸をする) %>
+        <%= link_to "棚卸を見る", stock_take_path(record.stock_take_entry.stock_take_id),
+              class: secondary_button_classes %>
+      <% end %>
+    <% end %>
+  </div>
+</li>

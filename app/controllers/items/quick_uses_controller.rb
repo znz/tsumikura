@@ -12,7 +12,9 @@ module Items
       @item = Item.find(params[:item_id])
       @usage_record = Stock::RecordUsage.call(item: @item, user: Current.user,
         attributes: { quantity: 1, used_on: Date.current })
-      @undo_usage_record_id = @usage_record.id if @usage_record.persisted?
+      # 取り消しは「その記録を消す」だけなので、パスで渡す
+      # (トーストは廃棄とも共用する。docs/spec/01-domain-model.md 5 節の申し送り)
+      @undo_path = usage_record_path(@usage_record) if @usage_record.persisted?
       @toast_message = toast_message
 
       respond_to do |format|
@@ -41,7 +43,7 @@ module Items
       # 外部サイトからの Referer は無視して品目詳細に倒す (allow_other_host: false)
       def redirect_to_previous_screen
         flash[:toast] = @toast_message
-        flash[:undo_usage_record_id] = @undo_usage_record_id if @undo_usage_record_id
+        flash[:undo_path] = @undo_path if @undo_path
         redirect_back_or_to item_path(@item), status: :see_other, allow_other_host: false
       end
   end

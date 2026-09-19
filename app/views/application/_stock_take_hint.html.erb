@@ -1,0 +1,14 @@
+<%# locals: (item:) %>
+<%#
+  「直近の棚卸日より前の日付です」の予告 (docs/spec/01-domain-model.md 判断 1)。
+  残数は符号付き数量の総和なので、棚卸より前の日付に記録を足すと理屈上は矛盾する。
+  保存はブロックせず、保存後の notice でも同じことを伝える (StockTakeWarning)。
+  棚卸は保管場所ごとなので、この品目を実際に数えた棚卸だけを見る
+  (数えていない品目には何も出さない)。
+%>
+<% if (last_counted_on = item.last_counted_on) %>
+  <p class="<%= hint_classes %>">
+    「<%= item.name %>」を数えた直近の棚卸日は <%= l(last_counted_on) %> です。
+    これより前の日付にすると、棚卸で合わせた在庫と食い違うことがあります (記録はできます)。
+  </p>
+<% end %>

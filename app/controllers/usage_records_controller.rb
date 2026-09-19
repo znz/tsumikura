@@ -3,6 +3,8 @@ class UsageRecordsController < ApplicationController
   # サービスの中で item.lock! + FEFO の引き当て + Stock::Recalculator が動く
   # (docs/spec/01-domain-model.md 判断 1 / 5 節)。
 
+  include StockTakeWarning
+
   # 品目・記録者はフォームから受け取らない (URL とログイン中のユーザーで決まる)
   EDITABLE_ATTRIBUTES = %i[ quantity used_on item_purpose_id lot_id note ].freeze
 
@@ -120,13 +122,13 @@ class UsageRecordsController < ApplicationController
     def recorded_notice(usage_record)
       notice = "「#{@item.name}」を #{usage_record.quantity} #{@item.unit} 使いました。"
 
-      "#{notice}#{allocation_notice(usage_record)}"
+      "#{notice}#{allocation_notice(usage_record)}#{stock_take_warning(usage_record.used_on, @item)}"
     end
 
     def revised_notice(usage_record)
       notice = "「#{@item.name}」の使用の記録を更新しました。"
 
-      "#{notice}#{allocation_notice(usage_record)}"
+      "#{notice}#{allocation_notice(usage_record)}#{stock_take_warning(usage_record.used_on, @item)}"
     end
 
     # 引き当てで「言われたとおりにできなかった」ことは必ず伝える
