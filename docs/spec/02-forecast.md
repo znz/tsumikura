@@ -78,12 +78,14 @@ pace = Rational(consumed, observed_days)      # 1 日あたりの消費量
 |---|---|
 | `estimation_mode` が `none` | `unknown` (予測を止めたい品目) |
 | `estimation_mode` が `manual` | 8 節。`manual_interval_days` が未設定、または `anchor` が `nil` なら `unknown` |
+| `anchor` が `nil` | `unknown` (起点が無いと在庫切れ予測日を出せない) |
 | `event_count < min_samples` (既定 2) | `unknown` (消費イベントが 2 件無いと間隔を 1 つも測れない) |
 | `observed_days < min_observed_days` (既定 14) | `unknown` (観測が浅すぎる) |
 | それ以外 | `pace = consumed / observed_days` |
 
 - `event_count` は窓の開始日当日を含めて数える。知りたいのは「間隔が 1 つ以上測れるか」であり、窓の開始日にある消費イベントは最初の間隔の始点として有効だからである。消費イベントが全部で 2 件しかなく、古い方が窓の開始になる品目でも `event_count = 2` となり、その 1 間隔からペースが出る。
 - `event_count >= 2` なら、開始日より後に消費イベントが必ず 1 件以上あるので `consumed > 0` が保証される。「ペースは分かっているが 0」という状態は起こらず、ゼロ除算も起きない。
+- `event_count >= 2` なら理屈のうえでは `anchor` も必ずある。それでも `auto` で `anchor` が `nil` のときを `unknown` にするのは、`anchor` が `items.last_consumed_on` という**キャッシュ列**、`event_count` が `stock_movements` の**集計**で、取得元が違うためである。キャッシュがずれて起点だけ欠けたときに例外を投げるのではなく黙る (設計原則 4)。
 - `observed_days` が 14 を下回るのは、`tracking_started_on` が 14 日以内の新しい品目か、測れた間隔の合計が 14 日に満たない品目である。どちらも極端なペースが出やすいので判定しない。
 - ペースは有理数 (`Rational`) で持つ。浮動小数の誤差で切り上げが 1 日ずれるのを避けるため。
 

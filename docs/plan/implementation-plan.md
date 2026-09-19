@@ -84,61 +84,101 @@
 
 ```
 閾値と既定値
-- [ ] Forecast::Thresholds.default は soon 21 / urgent 7 / window_min 90 /
+- [x] Forecast::Thresholds.default は soon 21 / urgent 7 / window_min 90 /
       window_events 5 / window_max 730 / min_samples 2 / min_observed_days 14 を返す
-- [ ] 品目固有の閾値 (soon 30 / urgent 10) が既定値を上書きする
+- [x] 品目固有の閾値 (soon 30 / urgent 10) が既定値を上書きする
+- [x] 上書きしても既定値のオブジェクトは変わらない (メモ化した default を壊さない)
+- [x] min_samples が 2 未満なら ArgumentError
+- [x] min_observed_days が 1 未満なら ArgumentError (ゼロ除算の予防)
 
 窓 (Forecast::Window)
-- [ ] 消費イベントが十分あるとき (5 件目が 22 日前)、窓の開始は today - 90 日、終わりは today
-- [ ] 消費イベントが 1 件も無いとき、窓の開始は today - 90 日
-- [ ] 5 件目の消費イベントが 200 日前なら、窓の開始は 200 日前まで伸びる
-- [ ] 消費イベントが 3 件しかなければ、最古の消費イベント日まで伸びる
-- [ ] tracking_started_on が 30 日前なら、窓の開始は 30 日前で止まる
-- [ ] 5 件目の消費イベントが 900 日前でも、窓の開始は today - 730 日で止まる
-- [ ] tracking_started_on が nil なら、下限は today - 730 日だけになる
-- [ ] 窓の開始が nth_event_on と一致するとき、窓の終わりは last_event_on (anchor) になる
-- [ ] 窓の開始が today - 90 日や下限で決まったとき、窓の終わりは today になる
-- [ ] observed_days は 窓の終わり - 窓の開始 (+1 しない)
-- [ ] 検算例 2: イベントが today / 182 / 364 / 546 / 728 日前なら、開始 728 日前・終わり today・observed_days 728
+- [x] 消費イベントが十分あるとき (5 件目が 22 日前)、窓の開始は today - 90 日、終わりは today
+- [x] 消費イベントが 1 件も無いとき、窓の開始は today - 90 日
+- [x] 5 件目の消費イベントが 200 日前なら、窓の開始は 200 日前まで伸びる
+- [x] 消費イベントが 3 件しかなければ、最古の消費イベント日まで伸びる
+- [x] tracking_started_on が 30 日前なら、窓の開始は 30 日前で止まる
+- [x] 5 件目の消費イベントが 900 日前でも、窓の開始は today - 730 日で止まる
+- [x] tracking_started_on が nil なら、下限は today - 730 日だけになる
+- [x] 窓の開始が nth_event_on と一致するとき、窓の終わりは last_event_on (anchor) になる
+- [x] 窓の開始が today - 90 日や下限で決まったとき、窓の終わりは today になる
+- [x] observed_days は 窓の終わり - 窓の開始 (+1 しない)
+- [x] 検算例 2: イベントが today / 182 / 364 / 546 / 728 日前なら、開始 728 日前・終わり today・observed_days 728
+- [x] 境界: 5 件目が 89 日前なら today - 90 日のまま、91 日前ならそこまで伸びる
+- [x] 境界: 5 件目がちょうど 730 日前ならその日、731 日前なら today - 730 日
+- [x] 窓の開始が下限 (tracking_started_on / today - 730 日) で決まったときの終わりは today
+- [x] 境界: 5 件目がちょうど today - 90 日なら、終わりは last_event_on になる
+- [x] 境界: 5 件目がちょうど 730 日前なら、終わりは last_event_on になる
+- [x] 境界: nth_event_on と tracking_started_on が同じ日なら、終わりは last_event_on になる
+- [x] window_min_days / window_max_days は Thresholds.default 固定ではなく渡された閾値を見る
 
 ペース
-- [ ] event_count 1 なら pace は unknown
-- [ ] event_count 0 なら pace は unknown (0 とは扱わない)
-- [ ] event_count 2・observed_days 13 なら pace は unknown
-- [ ] event_count 2・observed_days 14 なら pace は既知 (全 2 件で古い方が窓の開始、というケース)
-- [ ] 観測 90 日・消費 18 個なら pace.per_day は Rational(1, 5) (検算例 1)
-- [ ] 観測 728 日・消費 4 個なら pace.per_day は Rational(1, 182) (検算例 2)
+- [x] event_count 1 なら pace は unknown
+- [x] event_count 0 なら pace は unknown (0 とは扱わない)
+- [x] event_count 2・observed_days 13 なら pace は unknown
+- [x] event_count 2・observed_days 14 なら pace は既知 (全 2 件で古い方が窓の開始、というケース)
+- [x] 観測 90 日・消費 18 個なら pace.per_day は Rational(1, 5) (検算例 1)
+- [x] 観測 728 日・消費 4 個なら pace.per_day は Rational(1, 182) (検算例 2)
+- [x] unknown のとき source は :unknown、per_day は nil
+- [x] min_samples / min_observed_days は Thresholds.default 固定ではなく Snapshot の閾値を見る
+- [x] auto モードでも anchor_on が nil なら unknown (キャッシュずれで例外にしない)
+- [x] mode が Symbol 以外 (AR の enum 文字列) や nil なら ArgumentError
 
 在庫切れ予測日 (need_by_on)
-- [ ] 在庫 3・u 1・pace 1/5・anchor 2 日前 なら need_by_on は today + 18 で soon (検算例 1)
-- [ ] 在庫 0・u 1・pace 1/182・anchor today なら need_by_on は today + 182 で ok (検算例 2)
-- [ ] 在庫 5・u 2・pace 1/10 なら need_by_on は anchor + 60 (検算例 3)
-- [ ] u が 2 のとき、在庫 5 では「あと 2 回」として計算される (端数は数えない)
-- [ ] 在庫 1・u 2 (在庫が 1 回分に満たない) なら、在庫 0 と同じ need_by_on になる
-- [ ] 日数は切り上げる (pace 4/729 なら 1 個あたり 183 日)
-- [ ] need_by_on が過去になる場合は today に丸められ、days_left は 0 で urgent
-- [ ] days_left 7 は urgent、8 は soon、21 は soon、22 は ok
+- [x] 在庫 3・u 1・pace 1/5・anchor 2 日前 なら need_by_on は today + 18 で soon (検算例 1)
+- [x] 在庫 0・u 1・pace 1/182・anchor today なら need_by_on は today + 182 で ok (検算例 2)
+- [x] 在庫 5・u 2・pace 1/10 なら need_by_on は anchor + 60 (検算例 3)
+- [x] u が 2 のとき、在庫 5 では「あと 2 回」として計算される (端数は数えない)
+- [x] 在庫 1・u 2 (在庫が 1 回分に満たない) なら、在庫 0 と同じ need_by_on になる
+- [x] 日数は切り上げる (pace 4/729 なら 1 個あたり 183 日)
+- [x] need_by_on が過去になる場合は today に丸められ、days_left は 0 で urgent
+- [x] days_left 7 は urgent、8 は soon、21 は soon、22 は ok
+- [x] 品目固有の閾値 (soon 30 / urgent 10) では既定と結果が分かれる
+      (days_left 9 は urgent、25 は soon。既定なら soon / ok)
+- [x] ペースは Rational なので切り上げがずれない (消費 1・観測 49 日で need_by_on は today + 49)
+- [x] 在庫が Float でも「あと何回使えるか」は整数除算になる
 
 在庫 0
-- [ ] 在庫 0 でペース不明なら urgent、reason は :out_of_stock
-- [ ] 在庫 0 でもペースが分かっていれば式どおりに判定する (urgent 固定にしない)
-- [ ] none モードでは在庫 0 でも urgent にしない (最低在庫未設定なら unknown)
+- [x] 在庫 0 でペース不明なら urgent、reason は :out_of_stock
+- [x] 在庫 0 でもペースが分かっていれば式どおりに判定する (urgent 固定にしない)
+- [x] none モードでは在庫 0 でも urgent にしない (最低在庫未設定なら unknown)
+- [x] 在庫 0・ペース不明・最低在庫ありなら reason は :out_of_stock を優先する
+- [x] manual モードでも anchor が無ければペース不明なので在庫 0 は urgent
 
 最低在庫数
-- [ ] 最低在庫 3・在庫 2 なら urgent
-- [ ] 最低在庫 3・在庫 3 なら soon
-- [ ] 最低在庫 3・在庫 4 なら ok
-- [ ] pace 判定 ok かつ最低在庫判定 urgent なら結果は urgent、reason は :minimum (悪い方を採用)
-- [ ] pace 判定 urgent かつ最低在庫判定 ok なら結果は urgent、reason は :pace
-- [ ] pace unknown かつ最低在庫未設定かつ在庫ありなら unknown、reason は :no_data
+- [x] 最低在庫 3・在庫 2 なら urgent
+- [x] 最低在庫 3・在庫 3 なら soon
+- [x] 最低在庫 3・在庫 4 なら ok
+- [x] pace 判定 ok かつ最低在庫判定 urgent なら結果は urgent、reason は :minimum (悪い方を採用)
+- [x] pace 判定 urgent かつ最低在庫判定 ok なら結果は urgent、reason は :pace
+- [x] pace unknown かつ最低在庫未設定かつ在庫ありなら unknown、reason は :no_data
+- [x] ペースが分かっていれば reason が :minimum でも need_by_on と days_left を返す
+- [x] 両方 soon なら reason は :minimum を優先する
+- [x] pace 判定 ok かつ最低在庫判定 soon なら soon、reason は :minimum
+- [x] pace 判定 soon かつ最低在庫判定 ok なら soon、reason は :pace
 
 モード
-- [ ] manual モード: manual_interval_days 5 なら pace.per_day は Rational(1, 5)
-- [ ] manual モード: event_count 0・observed_days 0 でも pace は既知
-- [ ] manual モード: manual_interval_days 未設定なら unknown
-- [ ] manual モード: anchor_on が nil なら unknown
-- [ ] none モード: pace は常に unknown で、最低在庫数だけで判定する
+- [x] manual モード: manual_interval_days 5 なら pace.per_day は Rational(1, 5)
+- [x] manual モード: event_count 0・observed_days 0 でも pace は既知
+- [x] manual モード: manual_interval_days 未設定なら unknown
+- [x] manual モード: anchor_on が nil なら unknown
+- [x] manual モード: 実績が無くても need_by_on を出す
+- [x] manual モード: u が 2 でもペースは 1 / manual_interval_days のまま
+- [x] manual モード: 在庫 0 でもペース既知なら reason は :pace (:out_of_stock にしない)
+- [x] manual モード: anchor が古い tracking_started_on なら need_by_on は today に丸められる
+- [x] none モード: pace は常に unknown で、最低在庫数だけで判定する
+- [x] none モード: 在庫と最低在庫が同数なら soon
+
+エッジケース (仕様 9 節のうち PORO で表現できる行)
+- [x] 2 年以上使っていない (消費イベント 0 件) なら unknown で、最低在庫数だけで判定する
+- [x] 登録初日に大量使用しても observed_days が足りず極端なペースは出ない
+- [x] anchor_on が nil (キャッシュずれ) でも例外にならず unknown になる
 ```
+
+仕様 9 節の残りの行は AR 側の責務なので、それぞれ次のフェーズの TODO で扱う。
+同じ日の複数記録を 1 件と数える / 全ロット期限切れなら q = 0 は Phase 10、
+未来日の記録を作れないことは Phase 7 (購入) と Phase 8 (使用)、
+アーカイブ済み品目を一覧から外すことは Phase 6、買い物リストから外すことは Phase 11。
+期限判定 (仕様 12 節) は Phase 10 の `Expiry::Evaluator`。
 
 **動作確認**: `bin/rspec spec/models/forecast` が DB 未起動でも通り、1 秒未満で終わる。
 
@@ -218,6 +258,7 @@
 - [ ] 使用中の保管場所・店舗も同様に nullify される
 - [ ] 品目をアーカイブすると一覧に出ないが、詳細は開ける
 - [ ] 品目を作成すると current_quantity は 0
+- [ ] manual_interval_days は 1 以上でなければ保存できない (0 や負ではペースを出せない)
 ```
 
 **動作確認**: 品目を 5 件ほど登録し、カテゴリで絞り込める。
@@ -360,7 +401,10 @@
 - [ ] SnapshotBuilder の unit_usage は窓内の使用記録の数量の中央値 (無ければ 1)
 - [ ] SnapshotBuilder の anchor_on は最後の消費イベント日 (棚卸のマイナス差分を含む)
 - [ ] 消費イベントが無い品目の anchor_on は tracking_started_on
+- [ ] SnapshotBuilder は estimation_mode を Symbol (:auto / :manual / :none) で Snapshot に渡す
+      (Forecast::Pace は文字列や整数を ArgumentError にする)
 - [ ] BatchForecaster の結果は、各品目を ItemForecaster で個別に判定した結果と一致する
+- [ ] アーカイブ済みの品目は BatchForecaster の対象にもダッシュボードにも出ない
 - [ ] BatchForecaster は N 品目に対してクエリを定数回しか発行しない
 - [ ] ダッシュボードに購入推奨の品目数が表示される
 - [ ] ダッシュボードに期限切れロットを持つ品目が表示される

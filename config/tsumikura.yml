@@ -1,5 +1,9 @@
 # つみくらのアプリ独自設定。config.x.tsumikura = config_for(:tsumikura) で読む
 # (config/application.rb)。既定値の正はこのファイル (docs/spec/02-forecast.md 13 節)。
+#
+# forecast セクションだけは Forecast::Thresholds.default が Rails を介さず
+# 標準の YAML で shared から直接読む (DB も Rails も起動しない spec で同じ値を使うため)。
+# したがってこのセクションでは ERB も環境別 (development: / production:) の上書きも効かない。
 shared:
   forecast:
     window_min_days: 90     # 窓の最低の長さ。窓は (today - 90 日, today]
@@ -7,8 +11,8 @@ shared:
     window_max_days: 730    # 窓の最大の長さ。today - 730 日より前には伸ばさない
     soon_days: 21
     urgent_days: 7
-    min_samples: 2          # [window_start, today] の消費イベントがこれ未満なら unknown
-    min_observed_days: 14   # 観測日数がこれ未満なら unknown
+    min_samples: 2          # [window_start, today] の消費イベントがこれ未満なら unknown (2 以上)
+    min_observed_days: 14   # 観測日数がこれ未満なら unknown (1 以上。0 にするとゼロ除算になる)
   expiry:
     warning_days: 30
   notifications:
