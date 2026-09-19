@@ -139,11 +139,10 @@ end
 --format documentation
 ```
 
-`spec/rails_helper.rb` への追記:
+`spec/rails_helper.rb` への追記 (`config.include FactoryBot::Syntax::Methods` は `spec/support/factory_bot.rb` 側に置き、下の 1 行で読み込む):
 
 ```ruby
-Dir[Rails.root.join("spec/support/**/*.rb")].sort.each { |f| require f }
-config.include FactoryBot::Syntax::Methods
+Rails.root.glob("spec/support/**/*.rb").sort_by(&:to_s).each { |f| require f }
 config.infer_spec_type_from_file_location!
 config.filter_rails_from_backtrace!
 ```
@@ -165,6 +164,13 @@ spec/
 
 **`spec/models/forecast/` のうち PORO (`calculator` / `window` など) の spec は `rails_helper` ではなく `spec_helper` のみを require** して、DB なしで高速に回す ([予測](../spec/02-forecast.md))。Rails のオートロードが効かないので、spec の先頭で対象ファイルを `require_relative` する。DB を使う `snapshot_builder` / `batch_forecaster` の spec は通常どおり `rails_helper` を使う。
 
+**system spec のドライバ方針** (`spec/support/capybara.rb`):
+
+- 既定 (`type: :system`) は `driven_by :rack_test`。ブラウザを起動しないので DB 接続だけあれば速く動く。
+- `js: true` を付けた spec だけ `driven_by :selenium, using: :headless_chrome, screen_size: [ 390, 844 ]` (スマホ幅) を使う。
+- `ENV["GITHUB_ACTIONS"]` が無く (`bin/ci` も `ENV["CI"]` を立てるので `CI` では判定しない)、かつ `google-chrome` / `google-chrome-stable` / `chromium` / `chromium-browser` のいずれも `PATH` に見つからないときは、Selenium Manager にブラウザ/ドライバをダウンロードさせず `skip` する。CI では常に実行する (GitHub Actions の `ubuntu-latest` には Chrome がプリインストールされている)。
+- 失敗時のスクリーンショットの保存先は **`tmp/capybara`** (`Capybara.save_path`)。rspec-rails が `rspec/rails` の require 時に `capybara/rails` を require し、そこで `Capybara.save_path = Rails.root.join("tmp/capybara")` が設定される。Rails の `ActionDispatch::SystemTesting::TestHelpers::ScreenshotHelper#screenshots_dir` は `Capybara.save_path.presence || "tmp/screenshots"` なので、既定 (`tmp/screenshots`) ではなく `tmp/capybara` になる。CI の artifact path もここに合わせる。
+
 ## 5. Tailwind CSS
 
 ```bash
@@ -174,7 +180,9 @@ mise x -- bin/rails tailwindcss:install
 
 - tailwindcss-rails は `tailwindcss-ruby` gem 経由でスタンドアロン CLI バイナリを使うので **Node.js は不要**。
 - インストーラが `app/assets/tailwind/application.css`、`Procfile.dev`、`bin/dev` を生成し、レイアウトの `stylesheet_link_tag` を書き換える。**生成結果に合わせてレイアウトを調整する** (Propshaft 連携の出力先はバージョンで変わるため、実行後に実物を確認する)。
+  - 確認結果 (tailwindcss-rails 4.6.0 + Propshaft): レイアウトに既に `stylesheet_link_tag :app` があったため、インストーラは別枠の `stylesheet_link_tag "tailwind"` を**追加しなかった**。`:app` は `app/assets/**/*.css` を束ねて読み込むシンボルで、`Tailwindcss::Engine` が `app/assets/tailwind` (ソースの `@import "tailwindcss";`) を `config.assets.excluded_paths` に加えるため、ロードパスに乗るのはビルド成果物の `app/assets/builds/tailwind.css` だけになる。二重読み込みや衝突はない。
 - `bin/rails assets:precompile` が `tailwindcss:build` を自動実行するので **Dockerfile の変更は不要**。
+- **spec の前に Tailwind のビルドが必要。** tailwindcss-rails が `tailwindcss:build` を足す (enhance する) のは `test:prepare` だけで (`rails/all` が test_unit の railtie を読み込むため、`spec:prepare` / `db:test:prepare` の分岐には入らない)、RSpec では呼ばれない。ビルド成果物 `app/assets/builds/tailwind.css` は gitignore 対象で、無くても Propshaft は例外を出さず link が出ないだけなので、スタイルシートを検証する system spec が落ちる。ローカルは `bin/setup` がビルドし、GitHub Actions は `bin/rails db:test:prepare tailwindcss:build` と明示する。
 - `.gitignore` に `/app/assets/builds/*` + `!/app/assets/builds/.keep` が追加されることを確認する (`.dockerignore` には既に記載あり)。
 
 ## 6. 日本語化
@@ -204,11 +212,11 @@ config.i18n.available_locales = [ :ja ]
 
 | ジョブ | 変更内容 |
 |---|---|
-| `test` | `bin/rails db:test:prepare test` → `bin/rails db:test:prepare` の後に `bundle exec rspec --exclude-pattern "spec/system/**/*_spec.rb"` |
-| `system-test` | `bin/rails db:test:prepare test:system` → `bin/rails db:test:prepare` の後に `bundle exec rspec spec/system` |
-| `system-test` | 失敗時スクリーンショットの `path` を、RSpec の system spec が実際に保存する場所に合わせる (`tmp/capybara` の見込み。Phase 2 で確認する) |
-| `test` / `system-test` | Tailwind の CSS がビルドされていないとレイアウトの描画で失敗する。`db:test:prepare` でビルドされなければ、前段に `bin/rails tailwindcss:build` を足す (Phase 2 で確認する) |
-| 全ジョブ | `ruby/setup-ruby@v1` は `.ruby-version` を読む。**Ruby 4.0.7 のプリビルドが存在するかを Phase 2 で確認する** ([未決事項](../plan/open-questions.md)) |
+| `test` | `bin/rails db:test:prepare test` → `bin/rails db:test:prepare tailwindcss:build` の後に `bundle exec rspec --exclude-pattern "spec/system/**/*_spec.rb"` |
+| `system-test` | `bin/rails db:test:prepare test:system` → `bin/rails db:test:prepare tailwindcss:build` の後に `bundle exec rspec spec/system` |
+| `system-test` | 失敗時スクリーンショットの `path` は `tmp/capybara` (確認済み。4 節末尾参照) |
+| `test` / `system-test` | `bin/rails db:test:prepare tailwindcss:build` として Tailwind を明示的にビルドする (5 節。`db:test:prepare` だけではビルドされない) |
+| 全ジョブ | `ruby/setup-ruby@v1` は `.ruby-version` を読む。[`ruby-builder-versions.json`](https://github.com/ruby/setup-ruby/blob/master/ruby-builder-versions.json) に `4.0.7` が載っていることは確認した (2026-09-19)。実際にセットアップできるかは GitHub Actions の初回実行で確認する ([未決事項](../plan/open-questions.md)) |
 | `scan_ruby` / `scan_js` / `lint` | 変更なし |
 
 `config/ci.rb` (`bin/ci` から読まれる):

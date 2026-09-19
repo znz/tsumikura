@@ -33,3 +33,9 @@
 # Ignore key files for decrypting credentials and more.
 /config/*.key
 
+
+/app/assets/builds/*
+!/app/assets/builds/.keep
+
+# RSpec の --only-failures / --next-failure 用の状態ファイル
+/spec/examples.txt

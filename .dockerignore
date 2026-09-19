@@ -42,6 +42,12 @@
 # Ignore development files
 /.devcontainer
 
+# Ignore test / docs / dev-only files (本番イメージには不要)
+/spec
+/docs
+/compose.yaml
+/mise.toml
+
 # Ignore Docker-related files
 /.dockerignore
 /Dockerfile*

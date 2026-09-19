@@ -6,21 +6,22 @@
 
 | # | 項目 | リスク / 論点 | 推奨 | 決めるフェーズ |
 |---|---|---|---|---|
-| 1 | **Ruby 4.0.7 の CI 可用性** | `ruby/setup-ruby@v1` に 4.0.7 のプリビルドが無いとビルドに数分かかる、または失敗する | 実際に CI を回して確認する。無ければ `.ruby-version` を利用可能な最新パッチに下げ、`Dockerfile` の `ARG RUBY_VERSION` も合わせる | 2 |
-| 2 | **Tailwind インストーラの出力先** | tailwindcss-rails のバージョンによって Propshaft 連携の出力先とレイアウトの書き換え内容が変わる | `bin/rails tailwindcss:install` の実行結果に従い、実物を [開発環境](../ops/development.md) に記録する | 2 |
-| 3 | **Thruster を残すか外すか** | Dokku の `PORT` 注入と Thruster の `HTTP_PORT` / `TARGET_PORT` が二重になり、ポートの取り合いが起きうる | 初回デプロイで案 B (残す) を試し、ポート周りでつまずいたら案 A (外して Puma 直起動・`EXPOSE 3000`) に倒す。両案の詳細は [デプロイ](../ops/deployment.md#31-thruster-をどうするか-未決) | 5 |
-| 4 | **通知の配信時刻** | 朝 8 時が家庭の生活リズムに合うか不明 | 既定は `config/tsumikura.yml` の `digest_hour: 8`。`config/recurring.yml` を書き換えて再デプロイすれば変えられる。画面からの変更は v2 | 12 |
-| 5 | **`unknown` の UI 表現** | 「判定できません」が多いと不安になる | バッジは「—」、詳細に「データ収集中 — 使用記録がたまると予測を開始します」と出す。ダッシュボードの要購入件数には含めない | 10 |
-| 6 | **消費ペースの直近重視** | 単一窓の単純平均は、生活パターンの変化への追随が遅い | v1 は単一窓のまま運用する。追随が悪ければ短期窓・長期窓の合成に差し替える (`Forecast::Calculator` が PORO なので spec の追加だけで検証できる) | 運用後 |
-| 7 | **RuboCop と新規ディレクトリ** | `rubocop-rails-omakase` が `spec/` や `app/models/forecast/` に予期せぬ指摘を出す | Phase 2 で `bin/rubocop` を一度通し、必要なら `.rubocop.yml` に最小限の除外を追加する。`.rubocop_todo.yml` は作らない | 2 |
-| 8 | **在庫単位の表記ゆれ** | 「本」「ほん」「Pcs」が混在しうる | `items.unit` は string の自由入力のままにし、よく使う候補 (個 / 本 / ロール / 袋 / パック / 箱 / 枚 / セット) をサジェストする。マスタ化はしない | 6 |
-| 9 | **VAPID 鍵のバックアップ** | 鍵を失うと全購読が無効になり、家族全員が再購読することになる | 生成後すぐにパスワードマネージャ等へ退避する。`dokku config:show` からも復元できるが、アプリを作り直すと失われる | 12 |
-| 10 | **Dokku 上での migration 失敗** | `app.json` の predeploy が落ちるとデプロイが止まる (正しい挙動) | 破壊的 migration は 2 段階デプロイ (カラム追加 → コード変更 → 旧カラム削除) にする。家庭用なので通常は不要だが、方針として明記しておく | 随時 |
+| 1 | **Thruster を残すか外すか** | Dokku の `PORT` 注入と Thruster の `HTTP_PORT` / `TARGET_PORT` が二重になり、ポートの取り合いが起きうる | 初回デプロイで案 B (残す) を試し、ポート周りでつまずいたら案 A (外して Puma 直起動・`EXPOSE 3000`) に倒す。両案の詳細は [デプロイ](../ops/deployment.md#31-thruster-をどうするか-未決) | 5 |
+| 2 | **通知の配信時刻** | 朝 8 時が家庭の生活リズムに合うか不明 | 既定は `config/tsumikura.yml` の `digest_hour: 8`。`config/recurring.yml` を書き換えて再デプロイすれば変えられる。画面からの変更は v2 | 12 |
+| 3 | **`unknown` の UI 表現** | 「判定できません」が多いと不安になる | バッジは「—」、詳細に「データ収集中 — 使用記録がたまると予測を開始します」と出す。ダッシュボードの要購入件数には含めない | 10 |
+| 4 | **消費ペースの直近重視** | 単一窓の単純平均は、生活パターンの変化への追随が遅い | v1 は単一窓のまま運用する。追随が悪ければ短期窓・長期窓の合成に差し替える (`Forecast::Calculator` が PORO なので spec の追加だけで検証できる) | 運用後 |
+| 5 | **RuboCop と `app/models/forecast/`** | `rubocop-rails-omakase` が Phase 3 で追加する `app/models/forecast/` (PORO) に予期せぬ指摘を出す可能性がある (`spec/` 側は Phase 2 で確認済み。下記決定済み参照) | Phase 3 で `bin/rubocop` を通し、必要なら `.rubocop.yml` に最小限の除外を追加する。`.rubocop_todo.yml` は作らない | 3 |
+| 6 | **在庫単位の表記ゆれ** | 「本」「ほん」「Pcs」が混在しうる | `items.unit` は string の自由入力のままにし、よく使う候補 (個 / 本 / ロール / 袋 / パック / 箱 / 枚 / セット) をサジェストする。マスタ化はしない | 6 |
+| 7 | **VAPID 鍵のバックアップ** | 鍵を失うと全購読が無効になり、家族全員が再購読することになる | 生成後すぐにパスワードマネージャ等へ退避する。`dokku config:show` からも復元できるが、アプリを作り直すと失われる | 12 |
+| 8 | **Dokku 上での migration 失敗** | `app.json` の predeploy が落ちるとデプロイが止まる (正しい挙動) | 破壊的 migration は 2 段階デプロイ (カラム追加 → コード変更 → 旧カラム削除) にする。家庭用なので通常は不要だが、方針として明記しておく | 随時 |
 
 ## 2. 決定済み (理由を残す)
 
 | 項目 | 決定 | 理由 / 参照 |
 |---|---|---|
+| **Ruby 4.0.7 の CI 可用性** | **`.ruby-version` は 4.0.7 のまま。GitHub Actions の初回実行で最終確認** | `ruby/setup-ruby` が参照する `ruby-builder-versions.json` に `4.0.7` が載っていることは確認した (2026-09-19)。`@v1` タグで実際に取得できるかは CI の初回実行で確かめる。取得できなければ利用可能な最新パッチに下げる。[開発環境](../ops/development.md#8-ci) |
+| **RuboCop と `spec/` ディレクトリ** | **除外設定は不要** | Phase 2 で追加した `spec/` 一式 (support / requests / system) を含め `bin/rubocop` が 32 ファイル・0 件で通った。`.rubocop.yml` は変更していない |
+| **Tailwind インストーラの出力先** | **レイアウト変更不要。`stylesheet_link_tag :app` のまま** | レイアウトに既に `:app` があったため、インストーラは別枠のタグを追加しなかった。`Tailwindcss::Engine` が `app/assets/tailwind` (ソース) を `assets.excluded_paths` に加えるので、`:app` が拾うのはビルド成果物の `app/assets/builds/tailwind.css` だけ。[開発環境](../ops/development.md#5-tailwind-css) |
 | **Solid Cable** | **削除する** | リアルタイム同期は不要と決めた。画面の即時反映は Turbo Stream レスポンスで足りる。既定の `polling_interval: 0.1` の DB ポーリングを共有 Postgres に掛ける割に合わない。`config/cable.yml` は `adapter: async` (実質未使用)。[デプロイ](../ops/deployment.md#11-solid-cable-を削除する-確定) |
 | **ログイン ID** | **メールアドレスのまま** | Rails 8 の認証ジェネレータの既定をそのまま使う。メールは送らないので実在アドレスである必要はない。パスワード忘れは管理者が再設定する。[認証](../spec/05-auth.md) |
 | **在庫切れ予測日の起点** | **最後の消費イベント日 (anchor)** | 今日起点だと、使わない日が続くほど予測日が後ろへずれる。また在庫 = 未使用数なので、使用中の 1 個を `+1` 回分として数える必要がある。[予測](../spec/02-forecast.md#5-在庫切れ予測日-need_by_on) |

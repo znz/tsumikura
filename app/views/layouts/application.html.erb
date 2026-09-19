@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
   <head>
-    <title><%= content_for(:title) || "Tsumikura" %></title>
+    <title><%= content_for(:title) || "つみくら" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="Tsumikura">
+    <meta name="apple-mobile-web-app-title" content="つみくら">
+    <meta name="application-name" content="つみくら">
     <meta name="mobile-web-app-capable" content="yes">
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
@@ -18,12 +19,14 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon.png">
 
-    <%# Includes all stylesheet files in app/assets/stylesheets %>
+    <%# app/assets 以下の CSS をまとめて読み込む (Tailwind のビルド成果物 app/assets/builds/tailwind.css を含む) %>
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
   </head>
 
-  <body>
-    <%= yield %>
+  <body class="bg-white text-slate-900">
+    <main class="container mx-auto px-5">
+      <%= yield %>
+    </main>
   </body>
 </html>
