@@ -109,6 +109,14 @@ stores
   id, name string not null unique, note text, timestamps
 ```
 
+- `categories` / `storage_locations` の `position` には index を張る (一覧は常に `position` 順で引くため)。
+- `position` は **1 始まり**。作成時に `max(position) + 1` を振り、並べ替え (「上へ / 下へ」) のたびに
+  1 から振り直す。重複や欠番があっても並びが壊れない代わりに、並べ替えはマスタ全行を UPDATE する
+  (家庭で使う件数なので十分)。並べ替えで `updated_at` は更新しない。
+- `stores` は `position` を持たないので名前順に並べる。
+- 名前の前後の空白は保存時に落とす。`String#strip` は全角スペース (U+3000) を落とさず
+  「洗面所」と「洗面所　」が別名として一意制約をすり抜けるため、`[[:space:]]` で落とす。
+
 ### 品目
 
 ```
@@ -148,8 +156,22 @@ item_purposes
   index: [item_id, name] unique
 ```
 
+- **モデル側のバリデーション** (DB の制約ではない):
+  - 長さ: マスタの `name` と `items.name` は 50 文字、`items.name_reading` は 100 文字、`items.unit` は 20 文字まで。
+  - 整数の上限: 数量系 (`default_pack_size` / `minimum_quantity`) は `Item::MAX_QUANTITY` (99,999)、
+    日数系 (`manual_interval_days` / `soon_threshold_days` / `urgent_threshold_days` / `expiry_warning_days`) は
+    `Item::MAX_DAYS` (3,650) まで。**上限が無いと 4 バイト整数をはみ出した入力が書き込み時に
+    `ActiveModel::RangeError` になり、検証エラー (422) ではなく 500 になる**ため必ず付ける。
+  - `urgent_threshold_days <= soon_threshold_days` (どちらも既定値と合成した実効値で比べる)。
+  - `category_id` / `storage_location_id` が入っていて参照先が無ければ検証エラーにする
+    (フォームを開いている間にマスタが削除されると、そのままでは外部キー違反で 500 になる)。
+- `name_reading` は**カタカナをひらがなにそろえて保存**する (`tr("ァ-ヶ", "ぁ-ゖ")`)。検索語にも同じ変換を
+  掛けるので、「トイレ」でも「といれっとぺーぱー」に当たる。空白だけの入力は NULL にする。
+- 一覧の既定の並び順は `COALESCE(name_reading, name)` (漢字の名前をコードポイント順に並べても五十音順にならないため)。
 - `estimation_mode` は **auto / manual / none の 3 つだけ**とする。interval モードは設けない ([予測](02-forecast.md) の集計窓が自動で伸びるため不要)。
 - `manual_interval_days` は「1 単位を何日で使うか」。`pace = 1 ÷ manual_interval_days` となる。
+  `estimation_mode: manual` のときは**モデルで必須**にする (空のままだと予測が永久に `unknown` になり、
+  `auto` より悪い状態に黙って落ちるため)。
 - `last_consumed_on` は使用記録だけでなく**棚卸のマイナス差分も含む**最新日 (廃棄は含まない)。ダッシュボードの「最近使った品目」の並び順にも使う。
 - 集計窓の下限に使うため `tracking_started_on` (その品目の最初の在庫イベント日 = 全 `stock_movements` の `occurred_on` の最小値) を持つ。在庫イベントが無ければ NULL。
 - どちらも `Stock::Recalculator` が台帳から再計算するキャッシュである。過去日の記録を足したり消したりしても正しい値に戻る。
@@ -274,6 +296,12 @@ item_alert_states                     # Web Push の重複通知防止
 class Item < ApplicationRecord
   belongs_to :category, optional: true
   belongs_to :storage_location, optional: true
+
+  # prefix は必須。付けないと none が AR の Item.none (空スコープ) と衝突し、
+  # Rails がクラスロード時に ArgumentError を出す。
+  # 予測に渡すときは estimation_mode.to_sym にする (Forecast::Pace は文字列を受け付けない)
+  enum :estimation_mode, { auto: 0, manual: 1, none: 2 }, prefix: true, validate: true
+
   has_many :item_purposes, -> { order(:position) }, dependent: :destroy
   has_many :lots, dependent: :destroy
   has_many :stock_movements, dependent: :destroy

@@ -8,6 +8,22 @@ Rails.application.routes.draw do
 
   resource :menu, only: :show
 
+  # 品目は物理削除しない (docs/spec/01-domain-model.md 3 節) ので destroy を持たず、
+  # アーカイブ / 復元を Items::ArchivesController に分ける
+  resources :items, except: :destroy do
+    resource :archive, only: %i[ create destroy ], module: :items
+  end
+
+  # マスタ。show は一覧で足りるので置かない。
+  # 並べ替えは JS 無しで動く「上へ / 下へ」なので、position の更新も 1 つのリソースにする
+  resources :categories, except: :show do
+    resource :position, only: :update, module: :categories
+  end
+  resources :storage_locations, except: :show do
+    resource :position, only: :update, module: :storage_locations
+  end
+  resources :stores, except: :show
+
   resource :account, only: %i[ show update ]
   namespace :account do
     resource :password, only: :update

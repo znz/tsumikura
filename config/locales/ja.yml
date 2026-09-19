@@ -12,7 +12,43 @@ ja:
     models:
       user: ユーザー
       session: セッション
+      category: カテゴリ
+      storage_location: 保管場所
+      store: 店舗
+      item: 品目
     attributes:
+      category:
+        name: 名前
+        position: 並び順
+      storage_location:
+        name: 名前
+        position: 並び順
+      store:
+        name: 名前
+        note: メモ
+      item:
+        name: 名前
+        name_reading: よみ
+        category: カテゴリ
+        category_id: カテゴリ
+        storage_location: 保管場所
+        storage_location_id: 保管場所
+        unit: 単位
+        default_pack_size: 入数の既定値
+        minimum_quantity: 最低在庫数
+        tracks_expiry: 期限を管理する
+        tracks_purposes: 用途を管理する
+        estimation_mode: 予測モード
+        manual_interval_days: 使用間隔 (日)
+        soon_threshold_days: そろそろ購入の日数
+        urgent_threshold_days: 購入推奨の日数
+        expiry_warning_days: 期限警告日数
+        favorite: お気に入り
+        note: メモ
+        archived_at: アーカイブ
+        current_quantity: 在庫数
+        tracking_started_on: 記録開始日
+        last_consumed_on: 最終消費日
       user:
         name: 表示名
         email_address: メールアドレス
@@ -35,6 +71,12 @@ ja:
               last_admin: は、管理者が 1 人しかいないため変更できません
             deactivated_at:
               last_admin: はできません (管理者が 1 人しかいません)
+        item:
+          attributes:
+            urgent_threshold_days:
+              # そろそろ購入の日数だけを上書きすると、空欄の「購入推奨の日数」にエラーが付く。
+              # 何と比べて駄目なのかが分かるよう、既定値と合成したあとの実効値を両方入れる
+              greater_than_soon: " (%{urgent} 日) は、そろそろ購入の日数 (%{soon} 日) 以下にしてください"
 
   # 役割の表示名。ActiveRecord の enum には既定の i18n が無いので独自に持つ
   # (app/helpers/application_helper.rb の user_role_label)
@@ -43,3 +85,8 @@ ja:
       role:
         member: 一般
         admin: 管理者
+    item:
+      estimation_mode:
+        auto: 自動
+        manual: 手動
+        none: 予測しない

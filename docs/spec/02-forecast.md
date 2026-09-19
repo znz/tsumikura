@@ -169,6 +169,8 @@ status = [ by_minimum, by_pace, by_stockout ].compact.max_by { RANK.fetch(_1) } 
 
 `manual` は「実績はまだ無いが周期は分かっている」品目 (半年に 1 回のくん煙剤を買ったばかり、など) のための逃げ道である。実績が溜まれば `auto` に戻せばよい。
 
+`manual_interval_days` は **UI (モデルのバリデーション) では必須**とする。「手動」を選んで空のままにすると予測が永久に `unknown` になり、`auto` より悪い状態に黙って落ちるためである。`Forecast::Pace` 側の「`nil` なら `unknown`」は、古いデータや直接 UPDATE に備えた防御として残す。
+
 - 消費イベントが無い間の `anchor` は `tracking_started_on` (最初に在庫を登録した日) になる。`today` を起点にすると予測日が毎日後ろへ逃げ、いつまでも近づかないためである。
 - 在庫イベントが 1 件も無い品目は `anchor` が `nil` なので `manual` でも `unknown` となり、在庫 0 なら `by_stockout` で `urgent` になる。
 

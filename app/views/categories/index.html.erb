@@ -1,0 +1,43 @@
+<% content_for :title, "カテゴリ" %>
+
+<div class="flex items-center justify-between gap-2">
+  <h1 class="text-2xl font-bold text-slate-900">カテゴリ</h1>
+  <%= link_to "カテゴリを追加", new_category_path,
+        class: "flex min-h-11 items-center rounded-lg bg-blue-600 px-4 font-medium text-white hover:bg-blue-500" %>
+</div>
+
+<p class="mt-2 text-sm text-slate-600">品目一覧の絞り込みに使います。並び順は「上へ / 下へ」で変えられます。</p>
+
+<% if @categories.empty? %>
+  <p class="mt-6 rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600">
+    まだカテゴリがありません。
+  </p>
+<% else %>
+  <ul class="mt-6 space-y-3" aria-label="カテゴリ一覧">
+    <% @categories.each_with_index do |category, index| %>
+      <li class="rounded-xl border border-slate-200 bg-white p-4">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <p class="truncate font-medium text-slate-900"><%= category.name %></p>
+            <p class="text-sm text-slate-500">品目 <%= @item_counts.fetch(category.id, 0) %> 件</p>
+          </div>
+          <%= link_to "編集", edit_category_path(category), class: secondary_button_classes("shrink-0") %>
+        </div>
+
+        <div class="mt-3 flex items-center gap-2">
+          <%# 行が増えてもボタン名が区別できるよう、アクセシブルネームに名前を入れる %>
+          <%= button_to "上へ", category_position_path(category), method: :patch,
+                params: { direction: "up" }, disabled: index.zero?,
+                aria: { label: "「#{category.name}」を上へ" },
+                class: secondary_button_classes("disabled:opacity-40") %>
+          <%= button_to "下へ", category_position_path(category), method: :patch,
+                params: { direction: "down" }, disabled: index == @categories.size - 1,
+                aria: { label: "「#{category.name}」を下へ" },
+                class: secondary_button_classes("disabled:opacity-40") %>
+        </div>
+      </li>
+    <% end %>
+  </ul>
+<% end %>
+
+<%= link_to "メニューに戻る", menu_path, class: "mt-6 inline-flex min-h-11 items-center text-blue-600 underline" %>

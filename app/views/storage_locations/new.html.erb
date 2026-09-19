@@ -1,0 +1,7 @@
+<% content_for :title, "保管場所を追加" %>
+
+<h1 class="text-2xl font-bold text-slate-900">保管場所を追加</h1>
+
+<%= render "form", storage_location: @storage_location, submit_label: "追加" %>
+
+<%= link_to "保管場所一覧に戻る", storage_locations_path, class: "mt-6 inline-flex min-h-11 items-center text-blue-600 underline" %>

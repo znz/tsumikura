@@ -307,26 +307,120 @@ rake タスク (spec/tasks/create_admin_spec.rb)
 
 **作業**
 
-- `categories` / `storage_locations` / `stores` / `items` の migration とモデル (外部キーは `on_delete: :nullify`)
-- `ItemsController` (index/show/new/create/edit/update/destroy)、検索・フィルタ
-- 各マスタの CRUD (並べ替え、削除時の確認)
+- `categories` / `storage_locations` / `stores` / `items` の migration とモデル (外部キーは `on_delete: :nullify`、
+  `items` の check 制約は `current_quantity >= 0`)
+- `ItemsController` (index/show/new/create/edit/update)、検索・フィルタ。
+  **品目は物理削除しないので `destroy` は持たず**、`Items::ArchivesController` (アーカイブ / 復元) に分ける
+- 各マスタの CRUD (`CategoriesController` / `StorageLocationsController` / `StoresController`)。
+  並べ替えは JS 無しで動く「上へ / 下へ」(`Positioned` concern + `Categories::PositionsController` /
+  `StorageLocations::PositionsController`)。削除は nullify なので、編集画面に「n 件の品目から外れます」を
+  サーバ側で出す (`data-turbo-confirm` だけに頼らない)
+- 品目フォームの予測設定 (`estimation_mode` / `manual_interval_days` / 閾値 / 最低在庫数 / 期限警告日数)。
+  スマホで邪魔にならないよう `<details>` に畳む (Phase 10 の作業から前倒し。Phase 10 は表示・結線だけ)
+- 下部タブの「品目」を有効化、メニューに「カテゴリ」「保管場所」「店舗」を追加
 
 **TDD TODO**
 
 ```
-- [ ] Item は name が必須
-- [ ] Item は unit が必須で既定値は "個"
-- [ ] Item.active は archived_at が nil のものだけを返す
-- [ ] 品目一覧でカテゴリ絞り込みができる
-- [ ] 品目一覧で名前とよみで検索できる
-- [ ] 使用中のカテゴリを削除すると、その品目の category_id が nil になる (nullify)
-- [ ] 使用中の保管場所・店舗も同様に nullify される
-- [ ] 品目をアーカイブすると一覧に出ないが、詳細は開ける
-- [ ] 品目を作成すると current_quantity は 0
-- [ ] manual_interval_days は 1 以上でなければ保存できない (0 や負ではペースを出せない)
+Item モデル (spec/models/item_spec.rb)
+- [x] Item は name が必須
+- [x] Item は unit が必須で既定値は "個" (候補以外の自由入力も保存できる)
+- [x] 入数の既定値は 1 以上・最低在庫数は 0 以上でなければ保存できない
+- [x] manual_interval_days は 1 以上でなければ保存できない (0 や負ではペースを出せない)
+- [x] estimation_mode が manual なら manual_interval_days は必須 (auto / none なら空でよい)
+      (空のままだと予測が永久に unknown になり auto より悪くなる。仕様 02-forecast.md 8 節)
+- [x] estimation_mode は auto / manual / none のいずれか (未知の値は検証エラー)
+- [x] 購入推奨の日数は、そろそろ購入の日数より大きくできない (片方だけの上書きは既定値と比べる)
+- [x] 閾値のエラー文には両方の実効値が入る
+- [x] 閾値と期限警告日数は 0 以上でなければ保存できない
+- [x] 数量系は MAX_QUANTITY (99,999)、日数系は MAX_DAYS (3,650) が上限
+- [x] 4 バイト整数をはみ出す値でも例外にならず検証エラーになる (RangeError で 500 にしない)
+- [x] 削除済みのカテゴリ / 保管場所の id (0 を含む) では保存できない (外部キー違反で 500 にしない)
+- [x] name / unit / よみは前後の空白を落とす (全角スペースも)。よみが空白だけなら nil
+- [x] よみはカタカナで入力してもひらがなで保存される
+- [x] name 50 / name_reading 100 / unit 20 の長さ上限
+- [x] 品目を作成すると current_quantity は 0 で、キャッシュ列は空
+- [x] Item.active は archived_at が nil のものだけを返す / Item.archived はその逆
+- [x] #archive! は行を消さず archived_at を打ち、二重呼び出しで日時を上書きしない
+- [x] #restore! は archived_at を戻す
+- [x] Item.search は名前でもよみでも当たる (当たらない品目も用意して確認)
+- [x] Item.search は空文字・nil・空白 (全角スペースを含む) では絞り込まない
+- [x] Item.search の % _ \ はワイルドカードではなくただの文字として扱う (sanitize_sql_like)
+- [x] Item.search はカタカナの検索語でもひらがなのよみに当たる
+- [x] Item.search は英字の大文字小文字を無視する (ILIKE。LIKE に変えたら落ちる)
+- [x] Item.ordered はよみがあればよみ順、無ければ名前順
+- [x] 在庫数を負にする UPDATE は DB の check 制約で弾かれる (キャッシュ再計算の最後の守り)
+- [x] バリデーションを通らない品目でもアーカイブ・復元できる (閾値の既定を変えたあとなど)
+- [x] 閾値が未設定なら config/tsumikura.yml の既定値を返す (effective_*)
+
+マスタのモデル (spec/models/{category,storage_location,store}_spec.rb)
+- [x] name は必須で一意
+- [x] 作成順に position が振られ、.ordered はその順で返す
+- [x] #move! :up / :down で 1 つ上 / 下と入れ替わる。端では false を返して何もしない
+- [x] 未知の方向では何もしない / position が重複していても安定して動く
+- [x] 並べ替えても updated_at を汚さない
+- [x] 使用中のカテゴリを削除すると、その品目の category_id が nil になる (nullify、品目は消えない)
+- [x] 使用中の保管場所も同様に nullify される
+      (店舗を参照するのは lots なので、店舗の nullify は Phase 7 で検証する)
+- [x] コールバックを通らない delete でも DB 側の on_delete: :nullify が効く
+- [x] name は前後の空白 (全角スペースを含む) を落とす。落とさないと一意制約をすり抜ける
+- [x] name は 50 文字まで
+- [x] 店舗は position を持たないので名前順に並ぶ
+
+品目の画面 (spec/requests/items_spec.rb, spec/requests/items/archives_spec.rb)
+- [x] 品目一覧でカテゴリ絞り込みができる (絞られない品目も用意して確認)
+- [x] 品目一覧で保管場所の絞り込みができる
+- [x] 品目一覧で名前とよみで検索できる / 検索と絞り込みは同時に効く
+- [x] 1 件も当たらないときはその旨を出す
+- [x] アーカイブ済みは既定では出ない。状態を archived / all に切り替えると出る (知らない状態は既定に倒す)
+- [x] 品目が増えても一覧のクエリ数は増えない (category / storage_location を includes)
+- [x] 壊れた絞り込みパラメータ (配列・ハッシュ・数字でない id) は無視して既定に倒す
+      (0 件にして「品目が無い」ように見せない)。存在しない id の絞り込みは効く
+- [x] 4 バイト整数をはみ出す数量・削除済みのマスタ id を送っても 422 (500 にしない)
+- [x] 品目詳細に在庫数・単位・分類・設定値 (最低在庫数・入数・予測モード・使用間隔・閾値・期限警告) が出る
+- [x] 品目を作成・更新でき、予測設定も更新できる
+- [x] キャッシュ列 (current_quantity / tracking_started_on / last_consumed_on) と archived_at は
+      フォームから変更できない (mass assignment の遮断)
+- [x] item キーが無ければ 400 (500 にしない)
+- [x] 品目をアーカイブすると一覧に出ないが、詳細は開ける / 復元できる
+- [x] 品目を物理削除するルート (DELETE /items/:id) は無い
+
+マスタの画面 (spec/requests/{categories,storage_locations,stores}_spec.rb)
+- [x] 一覧・追加・編集ができる。名前が空 / 重複なら追加できない
+- [x] 追加したマスタは末尾に並ぶ
+- [x] position はフォームからは変更できない (並べ替えは PositionsController の担当)
+- [x] 「上へ / 下へ」で並べ替えできる。端や未知の方向では並びが変わらない
+- [x] 削除すると品目は消えず、カテゴリ / 保管場所だけが外れる (アーカイブ済みの品目からも外れる)
+- [x] 削除後に「n 件の品目から外れました」と知らせる
+- [x] 削除前に「n 件の品目から外れます」を編集画面に出す (rack_test でも検証できる)
+- [x] 店舗はメモつきで追加・編集・削除できる
+
+認可 (spec/requests/authorization_spec.rb)
+- [x] 表は品目とマスタの全ルートを網羅している (ルーティングと突き合わせて足し忘れを検出)
+- [x] 未ログインでは品目とマスタの全アクション (28 種) がログイン画面にリダイレクトされる (表駆動)
+- [x] 未ログインで全アクションを叩いてもレコードは増えず、既存のレコードも変わらない
+- [x] ログイン済みの一般ユーザーは全アクションが拒否されない (品目とマスタは管理者限定ではない)
+
+画面 (spec/system/{items,masters,navigation}_spec.rb)
+- [x] 品目タブから品目一覧に行ける / 未実装のタブは買い物・記録の 2 つだけになる
+- [x] 品目の詳細・追加・編集でも品目タブがハイライトされる (品目以外のページでは付かない)
+- [x] メニューからカテゴリ・保管場所・店舗に行ける
+- [x] 品目を登録して詳細を見られる / 名前が空ならエラーを出してフォームに戻る
+- [x] 予測設定は details に畳まれていて (開閉の印つき)、summary を開いて設定できる
+- [x] 一覧で検索・カテゴリ絞り込みができる / 1 件も当たらないときの表示が出る
+- [x] アーカイブすると一覧から外れ、詳細から戻せる。物理削除のボタンは無い
+- [x] マスタを追加・並べ替え・削除できる (端のボタンは disabled)
+- [x] 並べ替えボタンのアクセシブルネームに行の名前が入る
+- [x] 削除前に外れる品目の件数が画面に出る
 ```
 
 **動作確認**: 品目を 5 件ほど登録し、カテゴリで絞り込める。
+
+**次フェーズの前にやる整理 (別コミット)**
+
+- [ ] 整理: Phase 4 のビュー (`app/views/admin/`, `app/views/accounts/`, `app/views/sessions/`) を
+      Phase 6 で作ったフォームヘルパー (`field_classes` / `label_classes` / `primary_button_classes` など) と
+      `app/views/application/_form_errors.html.erb` に寄せる
 
 ---
 
@@ -445,7 +539,8 @@ rake タスク (spec/tasks/create_admin_spec.rb)
 - `Expiry::Evaluator` (期限ステータス)
 - `DashboardsController` + ダッシュボード UI
 - 品目一覧・詳細へのステータスバッジ組み込み
-- 品目編集に予測設定 (`estimation_mode` / `manual_interval_days` / 閾値 / 最低在庫数 / 期限警告日数)
+- 品目編集の予測設定 (`estimation_mode` / `manual_interval_days` / 閾値 / 最低在庫数 / 期限警告日数) は
+  Phase 6 で作成済み。ここでは予測結果 (在庫切れ予測日・ペース・判定理由) の表示だけを足す
 
 **TDD TODO**
 

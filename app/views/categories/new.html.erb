@@ -1,0 +1,7 @@
+<% content_for :title, "カテゴリを追加" %>
+
+<h1 class="text-2xl font-bold text-slate-900">カテゴリを追加</h1>
+
+<%= render "form", category: @category, submit_label: "追加" %>
+
+<%= link_to "カテゴリ一覧に戻る", categories_path, class: "mt-6 inline-flex min-h-11 items-center text-blue-600 underline" %>

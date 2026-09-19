@@ -1,0 +1,8 @@
+<% content_for :title, "#{@item.name} を編集" %>
+
+<h1 class="text-2xl font-bold text-slate-900">品目を編集</h1>
+
+<%= render "form", item: @item, categories: @categories, storage_locations: @storage_locations,
+      submit_label: "保存" %>
+
+<%= link_to "品目の詳細に戻る", item_path(@item), class: "mt-6 inline-flex min-h-11 items-center text-blue-600 underline" %>

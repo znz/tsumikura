@@ -1,6 +1,25 @@
 <h1 class="text-2xl font-bold text-slate-900">メニュー</h1>
 
-<ul class="mt-6 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+<h2 class="mt-6 text-sm font-medium text-slate-500">マスタ管理</h2>
+
+<ul class="mt-2 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+  <li>
+    <%= link_to "カテゴリ", categories_path,
+          class: "flex min-h-14 items-center px-4 py-3 text-slate-900 hover:bg-slate-50" %>
+  </li>
+  <li>
+    <%= link_to "保管場所", storage_locations_path,
+          class: "flex min-h-14 items-center px-4 py-3 text-slate-900 hover:bg-slate-50" %>
+  </li>
+  <li>
+    <%= link_to "店舗", stores_path,
+          class: "flex min-h-14 items-center px-4 py-3 text-slate-900 hover:bg-slate-50" %>
+  </li>
+</ul>
+
+<h2 class="mt-6 text-sm font-medium text-slate-500">アカウント</h2>
+
+<ul class="mt-2 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
   <li>
     <%= link_to "アカウント設定", account_path,
           class: "flex min-h-14 items-center px-4 py-3 text-slate-900 hover:bg-slate-50" %>
@@ -19,4 +38,4 @@
   </li>
 </ul>
 
-<p class="mt-6 text-sm text-slate-500">マスタ管理・履歴は順次追加します。</p>
+<p class="mt-6 text-sm text-slate-500">履歴は順次追加します。</p>

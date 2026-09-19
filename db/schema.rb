@@ -10,9 +10,49 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_19_135044) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_000004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
+
+  create_table "categories", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_categories_on_name", unique: true
+    t.index ["position"], name: "index_categories_on_position"
+  end
+
+  create_table "items", force: :cascade do |t|
+    t.datetime "archived_at"
+    t.bigint "category_id"
+    t.datetime "created_at", null: false
+    t.integer "current_quantity", default: 0, null: false
+    t.integer "default_pack_size"
+    t.integer "estimation_mode", default: 0, null: false
+    t.integer "expiry_warning_days"
+    t.boolean "favorite", default: false, null: false
+    t.date "last_consumed_on"
+    t.integer "manual_interval_days"
+    t.integer "minimum_quantity"
+    t.string "name", null: false
+    t.string "name_reading"
+    t.text "note"
+    t.integer "soon_threshold_days"
+    t.bigint "storage_location_id"
+    t.date "tracking_started_on"
+    t.boolean "tracks_expiry", default: false, null: false
+    t.boolean "tracks_purposes", default: false, null: false
+    t.string "unit", default: "個", null: false
+    t.datetime "updated_at", null: false
+    t.integer "urgent_threshold_days"
+    t.index ["archived_at"], name: "index_items_on_archived_at"
+    t.index ["category_id"], name: "index_items_on_category_id"
+    t.index ["favorite"], name: "index_items_on_favorite"
+    t.index ["name"], name: "index_items_on_name"
+    t.index ["storage_location_id"], name: "index_items_on_storage_location_id"
+    t.check_constraint "current_quantity >= 0", name: "items_current_quantity_non_negative"
+  end
 
   create_table "sessions", force: :cascade do |t|
     t.datetime "created_at", null: false
@@ -184,6 +224,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_135044) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
+  create_table "storage_locations", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_storage_locations_on_name", unique: true
+    t.index ["position"], name: "index_storage_locations_on_position"
+  end
+
+  create_table "stores", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.text "note"
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_stores_on_name", unique: true
+  end
+
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "deactivated_at"
@@ -197,6 +254,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_19_135044) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  add_foreign_key "items", "categories", on_delete: :nullify
+  add_foreign_key "items", "storage_locations", on_delete: :nullify
   add_foreign_key "sessions", "users"
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

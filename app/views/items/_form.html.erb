@@ -1,0 +1,126 @@
+<%# locals: (item:, categories:, storage_locations:, submit_label:) %>
+<%= form_with model: item, class: "mt-6 space-y-5" do |form| %>
+  <%= render "form_errors", record: item %>
+
+  <div>
+    <%= form.label :name, class: label_classes %>
+    <%= form.text_field :name, required: true, autofocus: item.new_record?, class: field_classes %>
+  </div>
+
+  <div>
+    <%= form.label :name_reading, class: label_classes %>
+    <%= form.text_field :name_reading, class: field_classes %>
+    <p class="<%= hint_classes %>">ひらがなで入れておくと検索しやすくなります。</p>
+  </div>
+
+  <div>
+    <%= form.label :category_id, class: label_classes %>
+    <%= form.collection_select :category_id, categories, :id, :name,
+          { include_blank: "未設定" }, class: field_classes %>
+  </div>
+
+  <div>
+    <%= form.label :storage_location_id, class: label_classes %>
+    <%= form.collection_select :storage_location_id, storage_locations, :id, :name,
+          { include_blank: "未設定" }, class: field_classes %>
+  </div>
+
+  <div>
+    <%= form.label :unit, class: label_classes %>
+    <%# 単位はマスタにせず自由入力。よく使うものだけ datalist で候補に出す %>
+    <%= form.text_field :unit, required: true, list: "item-unit-suggestions", class: field_classes %>
+    <datalist id="item-unit-suggestions">
+      <% Item::UNIT_SUGGESTIONS.each do |unit| %>
+        <option value="<%= unit %>"></option>
+      <% end %>
+    </datalist>
+    <p class="<%= hint_classes %>">候補以外も入力できます。</p>
+  </div>
+
+  <div>
+    <%= form.label :default_pack_size, class: label_classes %>
+    <%= form.number_field :default_pack_size, min: 1, inputmode: "numeric", class: field_classes %>
+    <p class="<%= hint_classes %>">1 パックの入数 (例: 12 ロール)。購入入力の初期値になります。</p>
+  </div>
+
+  <label class="flex min-h-11 items-center gap-3">
+    <%= form.check_box :favorite, class: "size-5 rounded border-slate-300" %>
+    <span class="text-sm font-medium text-slate-700">お気に入り (ダッシュボードに固定表示)</span>
+  </label>
+
+  <div>
+    <%= form.label :note, class: label_classes %>
+    <%= form.text_area :note, rows: 3, class: field_classes %>
+  </div>
+
+  <%# スマホで邪魔にならないよう、細かい設定は畳んでおく (JS 無しで開閉できる details) %>
+  <details class="group rounded-xl border border-slate-200 bg-white p-4" <%= "open" if item.errors.any? %>>
+    <%# 既定のマーカーは環境差が大きいので消し、畳まれているのが分かる印を自前で出す %>
+    <summary class="flex min-h-11 cursor-pointer list-none items-center gap-2 py-2 font-medium text-slate-900">
+      <span class="text-slate-400 transition-transform group-open:rotate-90" aria-hidden="true">▶</span>
+      <span>予測と期限の設定 <span class="text-sm font-normal text-slate-500">(未設定でも使えます)</span></span>
+    </summary>
+
+    <div class="mt-4 space-y-5 border-t border-slate-200 pt-4">
+      <div>
+        <%= form.label :minimum_quantity, class: label_classes %>
+        <%= form.number_field :minimum_quantity, min: 0, inputmode: "numeric", class: field_classes %>
+        <p class="<%= hint_classes %>">この数を切ったら購入推奨になります。</p>
+      </div>
+
+      <fieldset>
+        <legend class="<%= label_classes %>"><%= Item.human_attribute_name(:estimation_mode) %></legend>
+        <div class="mt-2 space-y-1">
+          <% Item.estimation_modes.each_key do |mode| %>
+            <label class="flex min-h-11 items-center gap-3">
+              <%= form.radio_button :estimation_mode, mode, class: "size-5" %>
+              <span class="text-sm text-slate-700"><%= t("enums.item.estimation_mode.#{mode}") %></span>
+            </label>
+          <% end %>
+        </div>
+        <p class="<%= hint_classes %>">「手動」は実績がまだ無いけれど周期が分かっている品目に使います。</p>
+      </fieldset>
+
+      <div>
+        <%= form.label :manual_interval_days, class: label_classes %>
+        <%= form.number_field :manual_interval_days, min: 1, inputmode: "numeric", class: field_classes %>
+        <p class="<%= hint_classes %>">
+          「手動」のときだけ使います (手動を選んだら必須)。1 <%= item.unit.presence || "個" %> を何日で使うか。
+        </p>
+      </div>
+
+      <div>
+        <%= form.label :soon_threshold_days, class: label_classes %>
+        <%= form.number_field :soon_threshold_days, min: 0, inputmode: "numeric",
+              placeholder: Forecast::Thresholds.default.soon_days, class: field_classes %>
+        <p class="<%= hint_classes %>">空欄なら既定の <%= Forecast::Thresholds.default.soon_days %> 日。</p>
+      </div>
+
+      <div>
+        <%= form.label :urgent_threshold_days, class: label_classes %>
+        <%= form.number_field :urgent_threshold_days, min: 0, inputmode: "numeric",
+              placeholder: Forecast::Thresholds.default.urgent_days, class: field_classes %>
+        <p class="<%= hint_classes %>">空欄なら既定の <%= Forecast::Thresholds.default.urgent_days %> 日。そろそろ購入の日数より大きくはできません。</p>
+      </div>
+
+      <label class="flex min-h-11 items-center gap-3">
+        <%= form.check_box :tracks_expiry, class: "size-5 rounded border-slate-300" %>
+        <span class="text-sm font-medium text-slate-700"><%= Item.human_attribute_name(:tracks_expiry) %></span>
+      </label>
+
+      <div>
+        <%= form.label :expiry_warning_days, class: label_classes %>
+        <%= form.number_field :expiry_warning_days, min: 0, inputmode: "numeric",
+              placeholder: Item.default_expiry_warning_days, class: field_classes %>
+        <p class="<%= hint_classes %>">空欄なら既定の <%= Item.default_expiry_warning_days %> 日。期限を管理するときだけ使います。</p>
+      </div>
+
+      <label class="flex min-h-11 items-center gap-3">
+        <%= form.check_box :tracks_purposes, class: "size-5 rounded border-slate-300" %>
+        <span class="text-sm font-medium text-slate-700"><%= Item.human_attribute_name(:tracks_purposes) %></span>
+      </label>
+    </div>
+  </details>
+
+  <%= form.submit submit_label, class: primary_button_classes %>
+<% end %>

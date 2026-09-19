@@ -1,6 +1,6 @@
 <%#
   下部固定の 5 タブ (docs/spec/03-screens.md 1 節)。
-  品目 / 記録 / 買い物は Phase 6 以降で作るため、リンクにせず無効表示にする
+  記録 / 買い物は Phase 8 以降で作るため、リンクにせず無効表示にする
   (存在しないルートヘルパーを呼ばない)。
 %>
 <% item_class = "flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 py-2 text-xs font-medium" %>
@@ -16,9 +16,12 @@
     </li>
 
     <li class="flex-1">
-      <span class="<%= item_class %> text-slate-300" role="link" aria-disabled="true">
-        品目<span class="sr-only"> (準備中)</span>
-      </span>
+      <%# 詳細 (/items/1) や追加フォーム (/items/new)、アーカイブ操作でもハイライトする %>
+      <%= link_to items_path,
+            class: "#{item_class} #{items_tab_current? ? 'text-blue-600' : 'text-slate-600'}",
+            aria: { current: ("page" if items_tab_current?) } do %>
+        品目
+      <% end %>
     </li>
 
     <li class="flex-1">

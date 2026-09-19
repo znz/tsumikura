@@ -1,0 +1,91 @@
+class ItemsController < ApplicationController
+  # 一覧の状態フィルタ。既定はアーカイブ済みを隠した「有効な品目だけ」
+  STATUSES = %w[ active archived all ].freeze
+  DEFAULT_STATUS = "active".freeze
+
+  before_action :set_item, only: %i[ show edit update ]
+  before_action :set_master_options, only: %i[ index new create edit update ]
+
+  def index
+    # 壊れた値 (配列・ハッシュ・数字でない文字列) は「指定なし」に倒す。
+    # 0 件にして「品目が無い」ように見せるより、絞り込まない方が親切
+    @query = params[:q].is_a?(String) ? params[:q] : ""
+    @category_id = filter_id(params[:category_id])
+    @storage_location_id = filter_id(params[:storage_location_id])
+    @status = STATUSES.include?(params[:status]) ? params[:status] : DEFAULT_STATUS
+
+    @items = filtered_items.includes(:category, :storage_location).ordered
+  end
+
+  def show
+  end
+
+  def new
+    @item = Item.new
+  end
+
+  def create
+    @item = Item.new(item_params)
+
+    if @item.save
+      redirect_to @item, notice: "「#{@item.name}」を登録しました。"
+    else
+      render :new, status: :unprocessable_content
+    end
+  end
+
+  def edit
+  end
+
+  def update
+    if @item.update(item_params)
+      redirect_to @item, notice: "「#{@item.name}」を更新しました。"
+    else
+      render :edit, status: :unprocessable_content
+    end
+  end
+
+  private
+    def set_item
+      @item = Item.find(params[:id])
+    end
+
+    # 絞り込みの id。セレクトの選択状態を保つため整数にそろえ、
+    # 正の整数でなければ「指定なし」として扱う
+    def filter_id(value)
+      return nil unless value.is_a?(String)
+
+      id = Integer(value, 10, exception: false)
+      id if id&.positive?
+    end
+
+    # 一覧の絞り込みセレクトと、フォームのカテゴリ / 保管場所セレクトの選択肢
+    def set_master_options
+      @categories = Category.ordered
+      @storage_locations = StorageLocation.ordered
+    end
+
+    def filtered_items
+      scope =
+        case @status
+        when "archived" then Item.archived
+        when "all"      then Item.all
+        else                 Item.active
+        end
+
+      scope.search(@query).in_category(@category_id).in_storage_location(@storage_location_id)
+    end
+
+    # archived_at は Items::ArchivesController の担当。
+    # current_quantity / tracking_started_on / last_consumed_on は台帳から再計算される
+    # キャッシュ列 (Phase 7 の Stock::Recalculator) なので、フォームからは受け取らない
+    def item_params
+      params.expect(item: [
+        :name, :name_reading, :category_id, :storage_location_id, :unit,
+        :default_pack_size, :minimum_quantity, :tracks_expiry, :tracks_purposes,
+        :estimation_mode, :manual_interval_days,
+        :soon_threshold_days, :urgent_threshold_days, :expiry_warning_days,
+        :favorite, :note
+      ])
+    end
+end

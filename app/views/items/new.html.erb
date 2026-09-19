@@ -1,0 +1,9 @@
+<% content_for :title, "品目を追加" %>
+
+<h1 class="text-2xl font-bold text-slate-900">品目を追加</h1>
+<p class="mt-2 text-sm text-slate-600">名前と単位だけ決めれば登録できます。細かい設定はあとからでも変えられます。</p>
+
+<%= render "form", item: @item, categories: @categories, storage_locations: @storage_locations,
+      submit_label: "登録する" %>
+
+<%= link_to "品目一覧に戻る", items_path, class: "mt-6 inline-flex min-h-11 items-center text-blue-600 underline" %>

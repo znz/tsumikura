@@ -20,8 +20,8 @@
 | # | 画面 | パス | 主な要素 |
 |---|---|---|---|
 | 1 | ダッシュボード | `/` | (1) アラートカード 4 種 (購入推奨 n 件 / そろそろ n 件 / 期限切れ n 件 / 期限間近 n 件) (2) クイック使用 (`favorite` + 最近使った品目のタイル、タップで即記録) (3) 最近の記録 5 件 |
-| 2 | 品目一覧 | `/items` | 検索 (名前・よみ)、カテゴリ / 保管場所 / 状態のフィルタチップ、行 = [名前 / 在庫 12 ロール / ステータスバッジ / 「使った」ボタン] |
-| 3 | 品目詳細 | `/items/:id` | 在庫の大表示、予測 (在庫切れ予測日・ペース「約 2.3 個/月」・判定理由)、最低在庫、ロット一覧 (期限順・残数・期限バッジ)、用途一覧 (最終交換日・交換周期の中央値)、履歴タブ、操作ボタン群 |
+| 2 | 品目一覧 | `/items` | 検索 (名前・よみ)、カテゴリ / 保管場所 / 状態 (有効 / アーカイブ済み / すべて) の絞り込み、行 = [名前 / 在庫 12 ロール / ステータスバッジ / 「使った」ボタン]。絞り込みは JS 無しで動く GET フォーム (「絞り込む」ボタンで送信) |
+| 3 | 品目詳細 | `/items/:id` | 在庫の大表示、予測 (在庫切れ予測日・ペース「約 2.3 個/月」・判定理由)、最低在庫、ロット一覧 (期限順・残数・期限バッジ)、用途一覧 (最終交換日・交換周期の中央値)、履歴タブ、操作ボタン群 (編集 / アーカイブ。**物理削除は提供しない**。アーカイブ済みならその旨と解除ボタン) |
 | 4 | クイック使用記録 | `/items/:id/usage_records/new` (ボトムシート) | 数量 (既定 1・大きい +/− ボタン・`inputmode="numeric"`)、用途チップ (`tracks_purposes` のみ)、日付 (既定は今日・「昨日」ボタン・日付ピッカー。未来日は選べない)、ロット選択 (`tracks_expiry` のみ・既定は FEFO 自動) |
 | 4b | ワンタップ使用 | `POST /items/:id/quick_use` | 数量 1・今日・FEFO で即記録。Turbo Stream でタイルと在庫を更新し、「取り消し」付きトーストを 8 秒表示 |
 | 5 | 購入入力 | `/items/:id/lots/new` | 数量入力トグル (「入数 × パック数」/「直接入力」、入数は `default_pack_size` を初期値)、購入日、期限日 (`tracks_expiry` のみ)、税込合計金額、店舗セレクト |
@@ -29,7 +29,7 @@
 | 6 | 棚卸 | `/stock_takes/new` → `/stock_takes/:id/edit` | (1) 保管場所を選ぶ (2) その場所の品目リスト (記録在庫を薄く表示・実数を数値キーパッドで入力・未入力はスキップ) (3) 期限品でロットが複数なら「ロット別に数える」を展開 (4) 確認画面で差分サマリ (増 n 件 / 減 n 件) (5) 確定 |
 | 7 | 買い物リスト | `/shopping_list` | 自動 (要購入) セクション + 手動追加セクション、チェックボックス、店舗でのグループ表示 (任意)、スヌーズ、自由入力の手動追加、「チェック済みを購入として記録」ボタン |
 | 8 | 履歴 | `/history` | 全 `stock_movements` の時系列、種別・品目・記録者フィルタ、無限スクロール、各行から編集・削除 |
-| 9 | マスタ | `/categories` `/storage_locations` `/stores` | 並べ替え可能な単純 CRUD。削除時は「n 件の品目から外れます」と確認 (nullify) |
+| 9 | マスタ | `/categories` `/storage_locations` `/stores` | 並べ替え可能な単純 CRUD。並べ替えは JS 無しで動く「上へ / 下へ」ボタン (端では `disabled`)。削除は編集画面からで、そこに「n 件の品目から外れます」をサーバ側で出す (nullify)。`data-turbo-confirm` は補助に留める。店舗は `position` を持たないので名前順・並べ替えなし |
 | 9b | 用途マスタ | `/items/:id/purposes` | 品目詳細配下。名前・既定数量・並び順 |
 | 10 | ユーザー管理 | `/admin/users` | 管理者のみ。一覧、追加 (名前 + メール + 初期パスワードを自動生成して画面表示)、役割変更、無効化、パスワード再設定 |
 | 11 | アカウント設定 | `/account` | 表示名・メール変更、パスワード変更、パスキー一覧 / 追加 / 削除、プッシュ通知 ON/OFF + テスト送信、ログイン中セッション一覧 / 失効 |
@@ -39,14 +39,17 @@
 ### 品目編集の予測設定
 
 品目の編集画面 (`/items/:id/edit`) には、[予測](02-forecast.md) に効く設定をまとめて置く。
+スマホで邪魔にならないよう `<details>` に畳み、バリデーションエラーのときだけ開いた状態で描画する。
+閾値は空欄なら既定値 (`config/tsumikura.yml`) を使う旨をプレースホルダと補足に出す。
+予測モードが `manual` でも使用間隔は未入力のまま保存できる (予測が `unknown` になるだけ。[予測](02-forecast.md) 8 節)。
 
 | 項目 | UI |
 |---|---|
 | 最低在庫数 | 数値入力 (空欄可)。「この数を切ったら購入推奨」と補足 |
 | 予測モード | ラジオ: 自動 (`auto`) / 手動 (`manual`) / 予測しない (`none`) |
-| 使用間隔 | `manual` のときだけ表示。「1 ロールを何日で使うか」の日数入力 (`manual_interval_days`) |
-| そろそろ / 購入推奨の日数 | 空欄なら既定の 21 日 / 7 日 |
-| 期限を管理する | チェックボックス (`tracks_expiry`)。ON のとき期限警告日数 (既定 30 日) を表示 |
+| 使用間隔 | 「1 ロールを何日で使うか」の日数入力 (`manual_interval_days`)。**`manual` のときは必須**。JS 無しで動かすため常時表示し、「手動のときだけ使います」と補足する (Stimulus での出し分けは後続のプログレッシブ強化) |
+| そろそろ / 購入推奨の日数 | 空欄なら既定の 21 日 / 7 日。購入推奨は、そろそろ購入以下でなければならない (エラー文には両方の実効値を出す) |
+| 期限を管理する | チェックボックス (`tracks_expiry`)。期限警告日数 (既定 30 日) も常時表示し、「期限を管理するときだけ使います」と補足する (出し分けは後続のプログレッシブ強化) |
 | 用途を管理する | チェックボックス (`tracks_purposes`) |
 
 ### ステータスの見せ方
@@ -69,7 +72,10 @@ Rails.application.routes.draw do
   end
   # パスワードリセットはメール送信手段がないため管理者操作のみ (PasswordsController は削除する)
 
-  resources :items do
+  # 品目は物理削除しないので destroy は持たない。
+  # アーカイブ / 復元は archived_at を ItemsController#update で permit しないために分ける
+  resources :items, except: :destroy do
+    resource :archive, only: %i[create destroy], module: :items
     post :quick_use, on: :member
     resources :usage_records, only: %i[new create], shallow: true
     resources :lots,          only: %i[new create], shallow: true
@@ -89,9 +95,15 @@ Rails.application.routes.draw do
   resources :purchases,           only: %i[new create]
 
   resources :stock_movements, only: :index, path: "history"
-  resources :categories
-  resources :storage_locations
-  resources :stores
+  # マスタは一覧で足りるので show は置かない。
+  # 並べ替え (上へ / 下へ) は position を update で permit しないために分ける
+  resources :categories, except: :show do
+    resource :position, only: :update, module: :categories
+  end
+  resources :storage_locations, except: :show do
+    resource :position, only: :update, module: :storage_locations
+  end
+  resources :stores, except: :show
 
   resource  :menu,     only: :show          # 下部タブの「メニュー」
   resource  :account,  only: %i[show update]
