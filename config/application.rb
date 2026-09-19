@@ -21,7 +21,12 @@ module Tsumikura
     # These settings can be overridden in specific environments using the files
     # in config/environments, which are processed later.
     #
-    # config.time_zone = "Central Time (US & Canada)"
-    # config.eager_load_paths << Rails.root.join("extras")
+    # 表示は常に日本語・日本時間にする
+    config.time_zone = "Asia/Tokyo"
+    config.i18n.default_locale = :ja
+    config.i18n.available_locales = [ :ja ]
+
+    # アプリ独自の設定 (config/tsumikura.yml)
+    config.x.tsumikura = config_for(:tsumikura)
   end
 end

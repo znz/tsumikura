@@ -8,10 +8,6 @@ development:
 test:
   adapter: test
 
+# solid_cable は使わない (画面の即時反映は不要と決めたため。docs/ops/deployment.md 1.1 節)。
 production:
-  adapter: solid_cable
-  connects_to:
-    database:
-      writing: cable
-  polling_interval: 0.1.seconds
-  message_retention: 1.day
+  adapter: async

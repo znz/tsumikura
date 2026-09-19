@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # check=error=true
 
-# This Dockerfile is designed for production, not development. Use with Kamal or build'n'run by hand:
+# This Dockerfile is designed for production, not development. Deployed to Dokku (docs/ops/deployment.md), or build'n'run by hand:
 # docker build -t tsumikura .
 # docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name tsumikura tsumikura
 
@@ -24,7 +24,7 @@ RUN apt-get update -qq && \
 ENV RAILS_ENV="production" \
     BUNDLE_DEPLOYMENT="1" \
     BUNDLE_PATH="/usr/local/bundle" \
-    BUNDLE_WITHOUT="development" \
+    BUNDLE_WITHOUT="development:test" \
     LD_PRELOAD="/usr/local/lib/libjemalloc.so"
 
 # Throw-away build stage to reduce size of final image

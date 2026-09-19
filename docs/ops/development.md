@@ -24,27 +24,27 @@ ruby = "4.0.7"
 ```
 
 - これで `mise x -- bin/rails ...` が 4.0.7 で動く。初回は `mise trust` が必要な場合がある。
-- `mise.toml` 導入前は `mise x ruby@latest -- bin/rails ...` のように `ruby@latest` を挟む。
+- `mise trust` が使えない環境 (CI やサンドボックスなど) では、`MISE_TRUSTED_CONFIG_PATHS` 環境変数にプロジェクトのパスを設定して代替する。
 - 代替案としてグローバル設定に `mise settings set idiomatic_version_file_enable_tools ruby` を入れる方法もあるが、プロジェクト完結の `mise.toml` を採る。
 
 ## 3. PostgreSQL (Docker Compose)
 
-ローカルに `psql` が無いのでコンテナで立てる。`compose.yaml` を新規作成する。
+ローカルに `psql` が無いのでコンテナで立てる ([`compose.yaml`](../../compose.yaml))。
 
 ```yaml
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:18
+    network_mode: host
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1"]
     environment:
       POSTGRES_USER: tsumikura
       POSTGRES_PASSWORD: tsumikura
       POSTGRES_DB: tsumikura_development
-    ports:
-      - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql   # 18 以降のイメージはここ。17 以前を使うなら /var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tsumikura"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U tsumikura -d tsumikura_development"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -52,6 +52,12 @@ services:
 volumes:
   postgres-data:
 ```
+
+- **ホストネットワーク + ループバック限定で動かす。** 開発マシンではホストから Docker ブリッジへの TCP がすべて拒否され (ping は通る)、`ports:` で公開しても `127.0.0.1:5432` から接続できなかった。ファイアウォールには手を入れず、コンテナをホストネットワークに置いて `listen_addresses=127.0.0.1` で待ち受ける。外部には公開されない。`network_mode: host` は Linux 専用。
+- ブリッジが使える環境に移る場合は `network_mode` と `command` を外し、`ports: ["127.0.0.1:5432:5432"]` にする。Docker の公開ポートはホストのファイアウォール (ufw など) を迂回するので、`"5432:5432"` とは書かずループバックに限定すること。
+- ホストの 5432 番を他の PostgreSQL が使っている場合は、`environment` に `PGPORT: 5433` を足して `DB_PORT=5433` で接続する (`PGPORT` はサーバにもヘルスチェックの `pg_isready` にも効く)。
+- ヘルスチェックは `-h 127.0.0.1` で TCP を見る。初回起動時、公式イメージは initdb 用の一時サーバを Unix ソケットだけで立てるので、ソケットを見ると本サーバの起動前に healthy になってしまう。
+- イメージは Alpine 版ではなく Debian 版 (`postgres:18`) を使う。Alpine (musl) は照合順序が実質 C になり、日本語の `ORDER BY` の結果が glibc の本番とずれるため。
 
 メジャーバージョンは本番の dokku-postgres が作る DB に合わせる (Phase 5 で `dokku postgres:info tsumikura-db` を見て確認し、違っていれば揃える)。
 

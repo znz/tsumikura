@@ -1,0 +1,22 @@
+# 開発・テスト用の PostgreSQL。本番は dokku-postgres を使う (docs/ops/deployment.md)
+services:
+  postgres:
+    image: postgres:18
+    # 開発マシンではホストから Docker ブリッジへの TCP が遮断されていて、ports: の公開が使えない。
+    # ホストネットワークで動かし、ループバックだけで待ち受ける (外部には公開しない)。Linux 専用
+    network_mode: host
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1"]
+    environment:
+      POSTGRES_USER: tsumikura
+      POSTGRES_PASSWORD: tsumikura
+      POSTGRES_DB: tsumikura_development
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U tsumikura -d tsumikura_development"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

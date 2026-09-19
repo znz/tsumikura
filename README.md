@@ -4,7 +4,7 @@
 
 家庭の消耗品 (トイレットペーパー、洗剤、電池、常備薬…) の在庫を家族で共有し、「そろそろ買う」を教えてくれる Web アプリ。名前は「積み倉」(家にあるストック) と「積み暮ら(し)」(日々の積み重ね) を重ねたもので、表示は常にひらがなで「つみくら」と書く。
 
-> **現在の状態: 実装前。** このリポジトリには `rails new` 直後のコードと、`docs/` の仕様書・実装計画しか入っていない。アプリのコードはこれから [実装計画](docs/plan/implementation-plan.md) の Phase 1 から書いていく。
+> **現在の状態: 実装の初期段階。** [実装計画](docs/plan/implementation-plan.md) の Phase 1 (基盤整備: 単一 DB 化、日本語化、開発用 PostgreSQL) まで完了。アプリの機能はまだ無い。進み具合は実装計画の各フェーズを参照。
 
 ## 主な機能 (計画)
 
@@ -36,7 +36,7 @@ Rails 8.1 / Ruby 4.0 / PostgreSQL / Solid Queue + Solid Cache (単一 DB) / Prop
 docker compose up -d --wait          # PostgreSQL
 mise x -- bin/rails db:prepare
 mise x -- bin/dev                    # http://localhost:3000
-mise x -- bin/rspec                  # テスト
+mise x -- bin/rspec                  # テスト (Phase 2 で導入)
 ```
 
-`compose.yaml` と `mise.toml` は Phase 1 で追加する。それまでは `mise x ruby@latest -- ...` を使う。詳細は [開発環境](docs/ops/development.md) を参照。
+`compose.yaml` と `mise.toml` は Phase 1 で追加済み。詳細は [開発環境](docs/ops/development.md) を参照。

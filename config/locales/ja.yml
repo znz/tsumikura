@@ -1,0 +1,6 @@
+# 日本語化。activerecord.models / activerecord.attributes やビュー文言は
+# モデル・画面の実装に合わせて随時追加する (docs/ops/development.md 6 節)。
+ja:
+  date:
+    formats:
+      default: "%Y/%m/%d"
