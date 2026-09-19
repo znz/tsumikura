@@ -1,0 +1,22 @@
+{
+  "name": "tsumikura",
+  "description": "家族でつなぐ、暮らしのストック",
+  "scripts": {
+    "dokku": {
+      "predeploy": "bundle exec rails db:prepare"
+    }
+  },
+  "healthchecks": {
+    "web": [
+      {
+        "type": "startup",
+        "name": "app boot check",
+        "description": "/up が 200 を返すことを確認",
+        "path": "/up",
+        "attempts": 12,
+        "wait": 5,
+        "timeout": 10
+      }
+    ]
+  }
+}

@@ -6,7 +6,10 @@ default: &default
   encoding: unicode
   # For details on connection pooling, see Rails configuration guide
   # https://guides.rubyonrails.org/configuring.html#database-pooling
-  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  # Puma のスレッド数 (RAILS_MAX_THREADS) だけでは、別プロセスで動く Solid Queue の supervisor
+  # (config/queue.yml の worker threads: 3 + dispatcher) の接続要求を満たせないことがあるため、
+  # 既定で +2 の余裕を持たせる。DB_POOL を設定すれば明示的に上書きできる。
+  max_connections: <%= ENV.fetch("DB_POOL") { ENV.fetch("RAILS_MAX_THREADS", 3).to_i + 2 } %>
   host:     <%= ENV.fetch("DB_HOST",     "localhost") %>
   port:     <%= ENV.fetch("DB_PORT",     5432) %>
   username: <%= ENV.fetch("DB_USERNAME", "tsumikura") %>

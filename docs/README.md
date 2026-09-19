@@ -18,6 +18,7 @@
 | 文書 | 内容 |
 |---|---|
 | [ops/deployment.md](ops/deployment.md) | Dokku 構成 (単一 DB 化、`SOLID_QUEUE_IN_PUMA`、`app.json`、SSL、環境変数、バックアップ) |
+| [ops/first-deploy.md](ops/first-deploy.md) | Phase 5 初回デプロイの実行手順書 (アプリ作成からバックアップ設定まで、上から順に実行する) |
 | [ops/development.md](ops/development.md) | mise、Docker Compose、RSpec / FactoryBot、Tailwind、日本語化、CI |
 
 ## 計画

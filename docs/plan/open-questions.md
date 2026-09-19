@@ -6,7 +6,7 @@
 
 | # | 項目 | リスク / 論点 | 推奨 | 決めるフェーズ |
 |---|---|---|---|---|
-| 1 | **Thruster を残すか外すか** | Dokku の `PORT` 注入と Thruster の `HTTP_PORT` / `TARGET_PORT` が二重になり、ポートの取り合いが起きうる | 初回デプロイで案 B (残す) を試し、ポート周りでつまずいたら案 A (外して Puma 直起動・`EXPOSE 3000`) に倒す。両案の詳細は [デプロイ](../ops/deployment.md#31-thruster-をどうするか-未決) | 5 |
+| 1 | **Thruster を残すか外すか** | 査読 (Dokku / Thruster のソースと公式ドキュメントで確認): Dokku は `EXPOSE` の先頭ポートを `PORT` としてコンテナに注入するが、Thruster は自分の待ち受けに `HTTP_PORT` を使い、Puma には `PORT` を `TARGET_PORT` で上書きして渡すため、ポートの取り合いは起きにくい。残る懸念は非 root (uid 1000) での 80 番 bind (Docker 20.10 以降なら通常問題ない) | 初回デプロイでまず案 B (現状の Dockerfile のまま、変更なし) を試し、`bind: permission denied` や 502 が出たときだけ案 A (外して Puma 直起動・`EXPOSE 3000` + `ports:set`) に倒す。両案の詳細は [デプロイ](../ops/deployment.md#31-thruster-をどうするか-未決) | 5 |
 | 2 | **通知の配信時刻** | 朝 8 時が家庭の生活リズムに合うか不明 | 既定は `config/tsumikura.yml` の `digest_hour: 8`。`config/recurring.yml` を書き換えて再デプロイすれば変えられる。画面からの変更は v2 | 12 |
 | 3 | **`unknown` の UI 表現** | 「判定できません」が多いと不安になる | バッジは「—」、詳細に「データ収集中 — 使用記録がたまると予測を開始します」と出す。ダッシュボードの要購入件数には含めない | 10 |
 | 4 | **消費ペースの直近重視** | 単一窓の単純平均は、生活パターンの変化への追随が遅い | v1 は単一窓のまま運用する。追随が悪ければ短期窓・長期窓の合成に差し替える (`Forecast::Calculator` が PORO なので spec の追加だけで検証できる) | 運用後 |

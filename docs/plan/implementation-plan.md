@@ -293,16 +293,11 @@ rake タスク (spec/tasks/create_admin_spec.rb)
 
 **作業**
 
-- **Thruster を残すか外すかを決める** ([デプロイ](../ops/deployment.md) の案 A / 案 B)。決めた内容で `Dockerfile` の `CMD` / `EXPOSE`、Gemfile、`bin/thrust` を確定し、`docs/ops/deployment.md` と [未決事項](open-questions.md) を更新する
-- `app.json` (predeploy / healthchecks) 作成
-- `config/environments/production.rb` の `assume_ssl` / `force_ssl` / `ssl_options` / `hosts` を有効化
-- `bin/docker-entrypoint` から `db:prepare` を削除
-- Dokku 側セットアップ (app 作成、postgres link、domains、letsencrypt、config:set)
-- 初回デプロイ + `dokku run ... tsumikura:create_admin`
-- **DB の日次バックアップをここで設定する** (後回しにしない)
+- **リポジトリ側の準備は完了**: `app.json` (predeploy / healthchecks) 作成、`config/environments/production.rb` の `assume_ssl` / `force_ssl` / `ssl_options` / `hosts` / `host_authorization` を有効化、`bin/docker-entrypoint` から `db:prepare` を削除。Thruster (案 A / 案 B) は未決のまま `Dockerfile` / `Gemfile` / `bin/thrust` は変更していない ([未決事項](open-questions.md) #1)。切り替え差分は [初回デプロイ手順書](../ops/first-deploy.md) の 6 節にそのまま適用できる形で用意した
+- **サーバ側は [初回デプロイ手順書](../ops/first-deploy.md) に従ってユーザーが実施する** (Dokku サーバへの接続が要るため): Thruster の実地判断、Dokku 側セットアップ (app 作成、postgres link、domains、letsencrypt、config:set)、初回デプロイ + `dokku run ... tsumikura:create_admin`、**DB の日次バックアップ設定 (後回しにしない)**。完了したら Thruster と PostgreSQL のメジャーバージョンの決定を [未決事項](open-questions.md) に反映する
 
 **動作確認**: `https://tsumikura.example.com/up` が 200、ログインできる、`dokku logs` にジョブ supervisor の起動ログが出る、バックアップが 1 回取れている。
-**`force_ssl` が効いていること** (http が https にリダイレクトされる、`/up` は除外される) と、**ログイン応答の `Set-Cookie: session_id` に `secure` が付くこと**を curl で確認する ([デプロイ](../ops/deployment.md#7-初回デプロイ手順))。
+**Dokku の nginx が http → https に 301 リダイレクトすること**、**HSTS ヘッダが付くこと**、**ログイン後の `session_id` Cookie に `secure` (`force_ssl` が付ける) が付くこと**を確認する ([初回デプロイ手順書](../ops/first-deploy.md#9-動作確認チェックリスト))。
 
 ---
 

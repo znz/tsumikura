@@ -67,7 +67,9 @@ volumes:
 default: &default
   adapter: postgresql
   encoding: unicode
-  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  # Puma のスレッド数だけでは Solid Queue の supervisor (別プロセス) の接続要求を満たせないことが
+  # あるため、既定で RAILS_MAX_THREADS + 2 にする (DB_POOL で明示上書きできる)。
+  max_connections: <%= ENV.fetch("DB_POOL") { ENV.fetch("RAILS_MAX_THREADS", 3).to_i + 2 } %>
   host:     <%= ENV.fetch("DB_HOST",     "localhost") %>
   port:     <%= ENV.fetch("DB_PORT",     5432) %>
   username: <%= ENV.fetch("DB_USERNAME", "tsumikura") %>

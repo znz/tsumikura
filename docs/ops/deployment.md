@@ -1,6 +1,6 @@
 # デプロイ (Dokku)
 
-[開発環境](development.md) / [概要](../spec/00-overview.md) / [通知](../spec/04-notifications.md) / [未決事項](../plan/open-questions.md)
+[初回デプロイ手順](first-deploy.md) / [開発環境](development.md) / [概要](../spec/00-overview.md) / [通知](../spec/04-notifications.md) / [未決事項](../plan/open-questions.md)
 
 既存の Dokku サーバに同居させる。Dockerfile デプロイ + 単一 `DATABASE_URL` + `SOLID_QUEUE_IN_PUMA` で、**アプリのコンテナは 1 つ**にする。Kamal は使わないので関連ファイルを削除する。
 
@@ -68,6 +68,8 @@ dokku config:set tsumikura SOLID_QUEUE_IN_PUMA=1 WEB_CONCURRENCY=0 RAILS_MAX_THR
 - コンテナは 1 つだけ動かす (`dokku ps:scale tsumikura web=1` のまま)。web を複数に増やすと Solid Queue の supervisor も複数になる。
 - `config/queue.yml` の production は `threads: 3, processes: 1` のままでよい。DB 負荷が気になれば `polling_interval` を 1 → 5 に。
 - 日次ダイジェストは `config/recurring.yml` に定義する ([通知](../spec/04-notifications.md))。
+- **DB 接続プール**: Solid Queue の supervisor は Puma とは別プロセスで動くため、`RAILS_MAX_THREADS` (Puma のスレッド数) の分だけでは `config/queue.yml` の worker (`threads: 3`) + dispatcher の接続要求を満たせないことがある。`config/database.yml` の `max_connections` は既定で `RAILS_MAX_THREADS + 2` にしている (`DB_POOL` で明示上書きできる)。
+- **ゼロダウンタイムデプロイ中の重複実行**: 新旧コンテナが一時的に並走しても、Solid Queue の recurring は `solid_queue_recurring_executions` の unique index (`task_key`, `run_at`) で重複排除されるため、日次ダイジェストが二重送信されることはない。
 
 ## 3. Dockerfile
 
@@ -80,7 +82,9 @@ dokku config:set tsumikura SOLID_QUEUE_IN_PUMA=1 WEB_CONCURRENCY=0 RAILS_MAX_THR
 
 ### 3.1 Thruster をどうするか (未決)
 
-Dokku は Dockerfile の `EXPOSE` を読んでポートマッピングを作る。Thruster は `HTTP_PORT` (既定 80) で待ち受けて `TARGET_PORT` (既定 3000) の Puma に流す。Dokku 側のポートマッピングや `PORT` 環境変数の扱いと噛み合うかを**初回デプロイで実地に確認してから**決める。
+査読 (Dokku / Thruster のソースと公式ドキュメントで確認): Dockerfile デプロイで Dokku はコンテナに `PORT` 環境変数を注入する (`EXPOSE 80` なら `PORT=80`)。一方 Thruster は自分の待ち受けポートには `PORT` を使わず `HTTP_PORT` (既定 80) を見て、子プロセス (Puma) を起動するときは `PORT` を `TARGET_PORT` (既定 3000) で上書きして渡す。したがって Dokku が注入する `PORT` と Thruster / Puma の間でポートの取り合いは起きにくい。残る懸念は非 root (uid 1000) での 80 番への bind だけで、Docker 20.10 以降のブリッジネットワークでは `ip_unprivileged_port_start` の既定が 0 のため通常は問題ない (失敗時の症状は `listen tcp :80: bind: permission denied`)。
+
+**推奨: まず案 B (現状の Dockerfile のまま、変更なし) でデプロイし、`bind: permission denied` や 502 が出たときだけ案 A に切り替える。** 最終判断は初回デプロイでの実地確認に委ねる (引き続き未決)。具体的な確認手順は [初回デプロイ手順書](first-deploy.md#6-thruster-の判断-未決事項-1) を参照。
 
 **案 A: Thruster を外して Puma 直起動**
 
@@ -90,25 +94,24 @@ CMD ["./bin/rails", "server"]
 ```
 
 - `Gemfile` から `gem "thruster"` を削除し、`bin/thrust` も削除する。
+- Dockerfile デプロイでは `EXPOSE` からの自動検出マッピングが `http:3000:3000` になり、外部の 80/443 番への対応が無くなる (letsencrypt の HTTP-01 チャレンジも失敗する)。**`dokku ports:set tsumikura http:80:3000` を明示的に実行する必要がある。**
 - 前段に Dokku の nginx がいるので、Thruster の圧縮・キャッシュ・X-Sendfile の価値は限定的。
-- ポートの取り合いが起きないので構成が単純になる。
 
-**案 B: Thruster を残す**
+**案 B: Thruster を残す (現状の Dockerfile のまま)**
 
-- `EXPOSE 80` のまま。`dokku ports:set tsumikura http:80:80` を確認する。
-- `TARGET_PORT` (Puma の待ち受け) を明示し、Dokku が注入する `PORT` と衝突しないことを確認する。
+- `EXPOSE 80` のまま。Dockerfile デプロイでは `EXPOSE` から `Ports map detected: http:80:80` が自動検出されるので、`ports:set` による明示設定は不要 (`dokku ports:report` で確認する)。
 - 静的アセットの gzip / brotli 配信と X-Sendfile が使える。将来 Dokku 以外へ移すときに構成を変えずに済む。
 
 **判断材料**
 
 | 観点 | 案 A | 案 B |
 |---|---|---|
-| ポート設定の事故 | 起きにくい | `PORT` / `HTTP_PORT` / `TARGET_PORT` の 3 つが絡む |
+| ポート設定の事故 | `ports:set` を手動で追加する必要がある | 自動検出でそのまま動く可能性が高い |
 | 静的配信の性能 | Rails (Propshaft) が返す。家庭用の同時 1〜5 人なら十分 | Thruster が圧縮・キャッシュする |
 | 生成物からの乖離 | `rails new` の既定から外れる | 既定のまま |
 | 切り戻し | いつでも戻せる (Gemfile と Dockerfile の数行) | 同左 |
 
-初回デプロイで案 B が素直に動けばそのまま残し、ポート周りでつまずいたら案 A に倒す。決定したら本節と [未決事項](../plan/open-questions.md) を更新する。
+初回デプロイで案 B が素直に動けばそのまま残し、`bind: permission denied` や 502 が出たら案 A に倒す。決定したら本節と [未決事項](../plan/open-questions.md) を更新する。
 
 ## 4. `app.json`
 
@@ -139,9 +142,10 @@ CMD ["./bin/rails", "server"]
 }
 ```
 
-- `predeploy` は新しいイメージで、トラフィックを流す前に実行される。`db:prepare` (create + schema load + migrate) の置き場所として適切。
+- `predeploy` は新しいイメージで、トラフィックを流す前に実行される。`db:prepare` (create + schema load + migrate) の置き場所として適切。Dockerfile デプロイでも実行される (査読で確認済み)。
+- `predeploy` は `Dockerfile` の `ENTRYPOINT` (`bin/docker-entrypoint`) 経由で、非 root ユーザー (uid 1000)・作業ディレクトリ `/rails` で実行される。`ENTRYPOINT` は引数をそのまま `exec` するだけなので、predeploy のコマンド文字列に `&&` や `|` などのシェル構文は使えない (`bundle exec rails db:prepare` は単一コマンドなので問題ない)。
 - `postdeploy` は使わない。初期管理者の作成は冪等性と可視性のために手動実行とする。
-- ヘルスチェックの `/up` は Rails 既定の `rails/health#show` をそのまま使う。
+- ヘルスチェックの `/up` は Rails 既定の `rails/health#show` をそのまま使う。predeploy の実行ログは `dokku logs` ではなく `git push` の出力に出る (`Executing predeploy task from app.json ...` という行)。デプロイ自体が失敗した場合は `dokku logs:failed tsumikura` で直前の失敗したビルドのログを確認する。
 
 ## 5. SSL とホスト認可
 
@@ -152,13 +156,14 @@ config.assume_ssl = true          # nginx が X-Forwarded-Proto を付ける
 config.force_ssl  = true          # HSTS + secure cookie
 config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 
-config.hosts = [ ENV.fetch("APP_HOST", "localhost") ]
+config.hosts = [ ENV["APP_HOST"].presence || "localhost" ]  # 空文字での事故防止に .presence を使う
 config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 ```
 
-- Dokku の nginx が TLS を終端し、アプリには http で到達する。`assume_ssl = true` がないと `force_ssl` が無限リダイレクトを起こす。
-- **`/up` を SSL リダイレクトとホスト認可の両方から除外する**のが重要。Dokku の内部ヘルスチェックはコンテナに直接 http でアクセスするため、除外しないとデプロイがヘルスチェックで失敗する。
+- Dokku の nginx が TLS を終端し、アプリには http で到達する。`assume_ssl = true` がないと `force_ssl` が無限リダイレクトを起こす。`assume_ssl` が有効な間、http → https の実際のリダイレクトは (アプリではなく) Dokku の nginx が証明書発行後に行う。
+- **`/up` をホスト認可から除外する**のが重要。Dokku の内部ヘルスチェックはコンテナに直接 http でアクセスするため、除外しないとデプロイがヘルスチェックで失敗する (`ssl_options` の `/up` 除外は `assume_ssl` が有効な間は実際には発火しない保険で、`host_authorization` の `/up` 除外が実質的に効く)。
 - `dokku-letsencrypt` の ACME チャレンジ (`/.well-known/acme-challenge`) は nginx が直接応答するのでアプリには届かない。`force_ssl` を先に入れても証明書の発行は成功する。
+- `force_ssl` の既定は HSTS に `includeSubDomains` を含める。`APP_HOST` がサブドメイン (`tsumikura.example.com` のような形) であれば、同じサーバの他アプリ (兄弟サブドメイン) には影響しない。**`APP_HOST` を apex ドメイン (`example.com` のような形) にする場合だけ**、Rails 側の `ssl_options` に `hsts: { subdomains: false }` を追加し、`dokku nginx:set tsumikura hsts-include-subdomains false` も合わせて設定する必要がある。
 
 ## 6. 環境変数
 
@@ -178,49 +183,31 @@ dokku config:set tsumikura \
 
 `DATABASE_URL` は `dokku postgres:link` が自動設定する。
 
+上記はこの構成で最終的に必要になる環境変数の一覧 (VAPID / WEBAUTHN は Phase 12 / 13 まで不要)。`RAILS_MASTER_KEY` 等の秘密情報をシェル履歴や `ps` に残さずに投入する具体的な手順は [初回デプロイ手順書 3 節](first-deploy.md#3-環境変数) を参照。
+
 ## 7. 初回デプロイ手順
 
-```bash
-# サーバ側
-dokku apps:create tsumikura
-dokku postgres:create tsumikura-db
-dokku postgres:link tsumikura-db tsumikura
-dokku domains:set tsumikura tsumikura.example.com
-dokku config:set tsumikura <上記の環境変数>
+具体的な実行手順は [初回デプロイ手順書](first-deploy.md) に上から順に実行すれば終わる形でまとめている (前提確認・DNS、アプリ/DB 作成、秘密情報を履歴に残さない環境変数の設定、ドメイン/永続ストレージ、git push、Thruster の実地判断、Let's Encrypt (通知先メールアドレスの設定を含む)、初期管理者作成、動作確認チェックリスト、DB バックアップ、ロックアウト復旧)。ここでは流れの概要だけ示す。
 
-# 手元から
-git remote add dokku dokku@example.com:tsumikura
-git push dokku main
+1. 前提確認 (Dokku / プラグインのバージョン、DNS を早めに向ける)
+2. アプリ作成、PostgreSQL サービス作成・link
+3. 環境変数の設定
+4. ドメイン設定、永続ストレージのマウント
+5. git remote の追加、作業ブランチから dokku の `main` への push
+6. Thruster の判断 (3.1 節。まず現状の Dockerfile のまま試す)
+7. Let's Encrypt の有効化
+8. 初回管理者の作成
+9. 動作確認
+10. DB バックアップの設定 (デプロイと同時に。後回しにしない)
+11. ロックアウト時の復旧手順の確認
 
-# 証明書
-dokku letsencrypt:enable tsumikura
-
-# 初期管理者 (パスワードは自動生成され、標準出力に 1 度だけ表示される)
-# ADMIN_PASSWORD での指定もできるが、シェルの履歴と ps に平文で残るので自動生成を使う
-dokku run tsumikura bin/rails tsumikura:create_admin \
-  ADMIN_EMAIL=admin@example.com ADMIN_NAME=かんりしゃ
-
-# バックアップ (後回しにしない)。先に保存先の認証情報を登録する
-dokku postgres:backup-auth tsumikura-db <access-key-id> <secret-access-key>
-dokku postgres:backup-schedule tsumikura-db "0 4 * * *" <bucket>
-```
-
-**確認すること**: `https://tsumikura.example.com/up` が 200 を返す / ログインできる / `dokku logs tsumikura` に Solid Queue の supervisor 起動ログが出る。
-
-**セッション Cookie に `secure` が付くことも確認する** (`force_ssl` が付ける。開発・test では付かないので本番でしか確かめられない)。
-
-```bash
-curl -sD - -o /dev/null -X POST https://tsumikura.example.com/session \
-  --data-urlencode 'email_address=admin@example.com' --data-urlencode 'password=...' \
-  | grep -i '^set-cookie: session_id'
-# session_id=...; path=/; expires=...; secure; HttpOnly; SameSite=Lax
-```
+**確認すること**: `https://tsumikura.example.com/up` が 200 を返す / ログインできる / `dokku logs tsumikura -n 200` に Solid Queue の supervisor 起動ログが出る / セッション Cookie (`session_id`) に `secure` が付く (`force_ssl` が付ける。開発・test では付かないので本番でしか確かめられない)。curl でログインを確認する場合は CSRF トークンの取得が要るので、平文パスワードを使う単純な `curl -X POST` では `422` になる。具体的な確認コマンドは [初回デプロイ手順書 9 節](first-deploy.md#9-動作確認チェックリスト) を参照。
 
 ## 8. バックアップと復旧
 
 | 項目 | 手段 |
 |---|---|
-| 日次バックアップ | `dokku postgres:backup-schedule` で S3 等へ。または `dokku postgres:export` を cron で回す。**Phase 5 のデプロイと同時に設定する** |
+| 日次バックアップ | `dokku postgres:backup-schedule` で S3 等へ (AWS 以外の S3 互換ストレージでは region・署名方式・エンドポイント URL も渡す)。または `dokku postgres:export` を cron で回す。手動で 1 回実行して確認するには `dokku postgres:backup tsumikura-db <bucket>`、スケジュール内容の確認は `dokku postgres:backup-schedule-cat tsumikura-db`。**Phase 5 のデプロイと同時に設定する** |
 | リストア | `dokku postgres:import tsumikura-db < dump` |
 | 管理者がパスワードを忘れた | `dokku run tsumikura bin/rails tsumikura:create_admin ADMIN_EMAIL=<その管理者> ADMIN_RESET_PASSWORD=1`。新しいパスワードが標準出力に 1 度だけ出て、そのユーザーのセッションはすべて失効する |
 | 管理者が 1 人もいない / 対象が無効化されている | `dokku run tsumikura bin/rails tsumikura:create_admin ADMIN_EMAIL=<新しいアドレス> ADMIN_NAME=...` で**別の管理者を作る** (このタスクは無効化を解除しない)。ログイン後に `/admin/users` から元のユーザーを再有効化する |

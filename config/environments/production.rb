@@ -25,13 +25,17 @@ Rails.application.configure do
   config.active_storage.service = :local
 
   # Assume all access to the app is happening through a SSL-terminating reverse proxy.
-  # config.assume_ssl = true
+  # Dokku の nginx が TLS を終端し、アプリには http で到達する。これがないと force_ssl が無限リダイレクトを起こす。
+  config.assume_ssl = true
 
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  # config.force_ssl = true
+  # HSTS を有効にし、Cookie に secure 属性を付ける (ログインの Set-Cookie で確認する)。
+  config.force_ssl = true
 
   # Skip http-to-https redirect for the default health check endpoint.
-  # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
+  # assume_ssl が有効な間はアプリ自身が http/https を判定してリダイレクトすることはない
+  # (http → https の実際のリダイレクトは Dokku の nginx が行う)。この除外は assume_ssl を外したときの保険として残す。
+  config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 
   # Log to STDOUT with the current request id as a default log tag.
   config.log_tags = [ :request_id ]
@@ -79,11 +83,13 @@ Rails.application.configure do
   config.active_record.attributes_for_inspect = [ :id ]
 
   # Enable DNS rebinding protection and other `Host` header attacks.
-  # config.hosts = [
-  #   "example.com",     # Allow requests from example.com
-  #   /.*\.example\.com/ # Allow requests from subdomains like `www.example.com`
-  # ]
-  #
+  # APP_HOST は dokku config:set で設定する (docs/ops/first-deploy.md)。未設定 (nil) でも起動できるように
+  # 既定値 "localhost" を用意するが、.presence を使い空文字 "" も未設定として扱う。
+  # (ENV.fetch(..., "localhost") だと APP_HOST="" のとき config.hosts = [""] になり、
+  #  すべてのリクエストが Blocked hosts で拒否される事故がありうるため)
+  config.hosts = [ ENV["APP_HOST"].presence || "localhost" ]
+
   # Skip DNS rebinding protection for the default health check endpoint.
-  # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  # Dokku の内部ヘルスチェックは APP_HOST と一致しない Host ヘッダで来ることがあるため、/up は除外する。
+  config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 end

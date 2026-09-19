@@ -1,8 +1,7 @@
 #!/bin/bash -e
 
-# If running the rails server then create or migrate existing database
-if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
-  ./bin/rails db:prepare
-fi
+# マイグレーションは app.json の scripts.dokku.predeploy (bundle exec rails db:prepare) に
+# 一本化した。新しいイメージにトラフィックを流す前に predeploy が実行されるため、
+# ここで db:prepare を実行する必要はない (docs/ops/deployment.md 4節)。
 
 exec "${@}"

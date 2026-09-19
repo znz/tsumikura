@@ -3,6 +3,9 @@
 
 # This Dockerfile is designed for production, not development. Deployed to Dokku (docs/ops/deployment.md), or build'n'run by hand:
 # docker build -t tsumikura .
+# db:prepare はもうこのイメージ内で自動実行されない (Dokku では app.json の predeploy が行う)。
+# 手動で docker run するときは、サーバを起動する前に db:prepare を別途実行すること:
+# docker run --rm -e RAILS_MASTER_KEY=<value from config/master.key> -e DATABASE_URL=<value> tsumikura bin/rails db:prepare
 # docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name tsumikura tsumikura
 
 # For a containerized dev environment, see Dev Containers: https://guides.rubyonrails.org/getting_started_with_devcontainer.html
@@ -69,7 +72,10 @@ USER 1000:1000
 COPY --chown=rails:rails --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --chown=rails:rails --from=build /rails /rails
 
-# Entrypoint prepares the database.
+# db:prepare はここでは実行しない。Dokku 上では app.json の scripts.dokku.predeploy が
+# この ENTRYPOINT 経由で、非 root ユーザー (uid 1000)・作業ディレクトリ /rails で実行する。
+# ENTRYPOINT は引数をそのまま exec するだけなので、predeploy のコマンド文字列に
+# `&&` や `|` などのシェル構文は使えない (単一コマンドの bundle exec rails db:prepare は問題ない)。
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 
 # Start server via Thruster by default, this can be overwritten at runtime
