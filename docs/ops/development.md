@@ -1,0 +1,237 @@
+# 開発環境
+
+[デプロイ](deployment.md) / [概要](../spec/00-overview.md) / [実装計画](../plan/implementation-plan.md)
+
+## 1. 前提
+
+| 項目 | 値 |
+|---|---|
+| Ruby | 4.0.7 (`.ruby-version`) |
+| Rails | 8.1.x |
+| DB | PostgreSQL (Docker Compose で起動) |
+| アセット | Propshaft + importmap + Tailwind CSS (tailwindcss-rails) |
+| テスト | RSpec + FactoryBot + Capybara |
+| ジョブ / キャッシュ | Solid Queue / Solid Cache (単一 DB) |
+
+## 2. mise
+
+グローバルの mise 設定が ruby 4.0.1 を固定しており、`.ruby-version` (4.0.7) が尊重されない。プロジェクトルートに `mise.toml` を置いて解決する。
+
+```toml
+# mise.toml
+[tools]
+ruby = "4.0.7"
+```
+
+- これで `mise x -- bin/rails ...` が 4.0.7 で動く。初回は `mise trust` が必要な場合がある。
+- `mise.toml` 導入前は `mise x ruby@latest -- bin/rails ...` のように `ruby@latest` を挟む。
+- 代替案としてグローバル設定に `mise settings set idiomatic_version_file_enable_tools ruby` を入れる方法もあるが、プロジェクト完結の `mise.toml` を採る。
+
+## 3. PostgreSQL (Docker Compose)
+
+ローカルに `psql` が無いのでコンテナで立てる。`compose.yaml` を新規作成する。
+
+```yaml
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: tsumikura
+      POSTGRES_PASSWORD: tsumikura
+      POSTGRES_DB: tsumikura_development
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql   # 18 以降のイメージはここ。17 以前を使うなら /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tsumikura"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+```
+
+メジャーバージョンは本番の dokku-postgres が作る DB に合わせる (Phase 5 で `dokku postgres:info tsumikura-db` を見て確認し、違っていれば揃える)。
+
+`config/database.yml` の development / test を ENV フォールバック付きにする。
+
+```yaml
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  host:     <%= ENV.fetch("DB_HOST",     "localhost") %>
+  port:     <%= ENV.fetch("DB_PORT",     5432) %>
+  username: <%= ENV.fetch("DB_USERNAME", "tsumikura") %>
+  password: <%= ENV.fetch("DB_PASSWORD", "tsumikura") %>
+
+development:
+  <<: *default
+  database: tsumikura_development
+
+test:
+  <<: *default
+  database: tsumikura_test
+
+production:
+  <<: *default
+```
+
+CI や本番では `DATABASE_URL` が自動でマージされて上書きするので、この記述と両立する。
+
+起動:
+
+```bash
+docker compose up -d --wait
+mise x -- bin/rails db:prepare
+mise x -- bin/dev            # Tailwind の watch + Puma
+```
+
+`bin/setup` の先頭に `docker compose up -d --wait` を足してもよいが、Docker 必須になるので README に手順を書く方を採る。
+
+## 4. RSpec / FactoryBot
+
+t_wada 流 TDD (Red → Green → Refactor、TODO リスト駆動、小さなステップ) で進めるため、テストは最初期に整える。
+
+```ruby
+# Gemfile
+group :development, :test do
+  gem "rspec-rails"
+  gem "factory_bot_rails"
+end
+
+group :test do
+  gem "capybara"
+  gem "selenium-webdriver"
+  gem "shoulda-matchers"   # 任意
+end
+```
+
+```bash
+mise x -- bundle install
+mise x -- bin/rails generate rspec:install    # .rspec, spec/spec_helper.rb, spec/rails_helper.rb
+mise x -- bundle binstubs rspec-core          # bin/rspec
+rm -rf test/                                  # Minitest のディレクトリを削除
+```
+
+`config/application.rb`:
+
+```ruby
+config.generators do |g|
+  g.test_framework :rspec,
+    fixture: true, view_specs: false, helper_specs: false, routing_specs: false
+  g.fixture_replacement :factory_bot, dir: "spec/factories"
+end
+```
+
+`.rspec`:
+
+```
+--require spec_helper
+--format documentation
+```
+
+`spec/rails_helper.rb` への追記:
+
+```ruby
+Dir[Rails.root.join("spec/support/**/*.rb")].sort.each { |f| require f }
+config.include FactoryBot::Syntax::Methods
+config.infer_spec_type_from_file_location!
+config.filter_rails_from_backtrace!
+```
+
+ディレクトリ構成:
+
+```
+spec/
+  models/          # AR モデル + PORO (forecast/ を含む)
+  requests/        # コントローラ層
+  system/          # Capybara (headless chrome)
+  factories/
+  support/
+    factory_bot.rb
+    authentication_helper.rb   # sign_in(user)
+    webauthn_helper.rb
+    capybara.rb
+```
+
+**`spec/models/forecast/` のうち PORO (`calculator` / `window` など) の spec は `rails_helper` ではなく `spec_helper` のみを require** して、DB なしで高速に回す ([予測](../spec/02-forecast.md))。Rails のオートロードが効かないので、spec の先頭で対象ファイルを `require_relative` する。DB を使う `snapshot_builder` / `batch_forecaster` の spec は通常どおり `rails_helper` を使う。
+
+## 5. Tailwind CSS
+
+```bash
+mise x -- bundle add tailwindcss-rails
+mise x -- bin/rails tailwindcss:install
+```
+
+- tailwindcss-rails は `tailwindcss-ruby` gem 経由でスタンドアロン CLI バイナリを使うので **Node.js は不要**。
+- インストーラが `app/assets/tailwind/application.css`、`Procfile.dev`、`bin/dev` を生成し、レイアウトの `stylesheet_link_tag` を書き換える。**生成結果に合わせてレイアウトを調整する** (Propshaft 連携の出力先はバージョンで変わるため、実行後に実物を確認する)。
+- `bin/rails assets:precompile` が `tailwindcss:build` を自動実行するので **Dockerfile の変更は不要**。
+- `.gitignore` に `/app/assets/builds/*` + `!/app/assets/builds/.keep` が追加されることを確認する (`.dockerignore` には既に記載あり)。
+
+## 6. 日本語化
+
+```ruby
+# Gemfile
+gem "rails-i18n"
+
+# config/application.rb
+config.time_zone = "Asia/Tokyo"
+config.i18n.default_locale = :ja
+config.i18n.available_locales = [ :ja ]
+```
+
+- `config/locales/ja.yml` に `activerecord.models` / `activerecord.attributes` とビュー文言を定義する。
+- `config/locales/en.yml` は削除する。
+- 日付フォーマットは `date.formats.default: "%Y/%m/%d"`。
+- `config.active_record.default_timezone` は既定の `:utc` のまま (DB は UTC、表示は JST)。`Date.current` が JST 基準になるので、`used_on` などの日付は期待どおりに動く。
+
+## 7. アプリ設定ファイル
+
+`config/tsumikura.yml` を置き、`Rails.application.config_for(:tsumikura)` で読む。内容は [予測と要購入判定](../spec/02-forecast.md) を参照。
+
+## 8. CI
+
+`.github/workflows/ci.yml`:
+
+| ジョブ | 変更内容 |
+|---|---|
+| `test` | `bin/rails db:test:prepare test` → `bin/rails db:test:prepare` の後に `bundle exec rspec --exclude-pattern "spec/system/**/*_spec.rb"` |
+| `system-test` | `bin/rails db:test:prepare test:system` → `bin/rails db:test:prepare` の後に `bundle exec rspec spec/system` |
+| `system-test` | 失敗時スクリーンショットの `path` を、RSpec の system spec が実際に保存する場所に合わせる (`tmp/capybara` の見込み。Phase 2 で確認する) |
+| `test` / `system-test` | Tailwind の CSS がビルドされていないとレイアウトの描画で失敗する。`db:test:prepare` でビルドされなければ、前段に `bin/rails tailwindcss:build` を足す (Phase 2 で確認する) |
+| 全ジョブ | `ruby/setup-ruby@v1` は `.ruby-version` を読む。**Ruby 4.0.7 のプリビルドが存在するかを Phase 2 で確認する** ([未決事項](../plan/open-questions.md)) |
+| `scan_ruby` / `scan_js` / `lint` | 変更なし |
+
+`config/ci.rb` (`bin/ci` から読まれる):
+
+```ruby
+CI.run do
+  step "Setup", "bin/setup --skip-server"
+  step "Style: Ruby", "bin/rubocop"
+  step "Security: Gem audit", "bin/bundler-audit"
+  step "Security: Importmap vulnerability audit", "bin/importmap audit"
+  step "Security: Brakeman code analysis", "bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error"
+  step "Tests: RSpec", "bin/rspec --exclude-pattern 'spec/system/**/*_spec.rb'"
+  step "Tests: System", "bin/rspec spec/system"
+  step "Tests: Seeds", "env RAILS_ENV=test bin/rails db:seed:replant"
+end
+```
+
+- `bin/setup --skip-server` が `db:prepare` を実行するので、手元では先に `docker compose up -d --wait` を済ませておく。
+- `db/seeds.rb` は **ENV なしでも成功する冪等な実装**にする (CI の `db:seed:replant` を通すため)。
+
+## 9. よく使うコマンド
+
+```bash
+docker compose up -d --wait          # PostgreSQL 起動
+mise x -- bin/rails db:prepare       # DB 作成・マイグレーション
+mise x -- bin/dev                    # 開発サーバ (Tailwind watch 付き)
+mise x -- bin/rspec                  # 全テスト
+mise x -- bin/rspec spec/models/forecast   # 予測ロジックだけ (DB 不要・高速)
+mise x -- bin/rubocop                # 静的解析
+mise x -- bin/ci                     # CI と同じ一式
+mise x -- bin/rails stock:verify     # 在庫キャッシュの差異検出
+```
