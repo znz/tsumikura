@@ -11,6 +11,12 @@ class Item < ApplicationRecord
   belongs_to :category, optional: true
   belongs_to :storage_location, optional: true
 
+  # 品目は物理削除しない (アーカイブする) が、消したときに在庫の記録だけが残らないようにする。
+  # stock_movements を先に宣言するのは、ロットより先に movement を消すため
+  # (逆だと Lot#ensure_not_consumed に止められて中途半端に壊れる)
+  has_many :stock_movements, dependent: :destroy
+  has_many :lots, dependent: :destroy
+
   # prefix は必須。付けないと none が AR の Item.none (空スコープ) と衝突し、
   # Rails がクラスロード時に ArgumentError を出す。
   # validate: true なので未知の値は例外ではなく検証エラーになる。

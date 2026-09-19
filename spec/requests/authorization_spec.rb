@@ -13,6 +13,14 @@ authenticated_actions = [
   [ "品目のアーカイブ", :post, -> { item_archive_path(item) }, -> { {} } ],
   [ "品目の復元", :delete, -> { item_archive_path(item) }, -> { {} } ],
 
+  [ "購入の入力フォーム", :get, -> { new_item_lot_path(item) }, -> { {} } ],
+  [ "購入の記録", :post, -> { item_lots_path(item) },
+    -> { { lot: { acquired_on: Date.current.to_s, initial_quantity: "1" } } } ],
+  [ "購入の記録の編集フォーム", :get, -> { edit_lot_path(lot) }, -> { {} } ],
+  [ "購入の記録の更新", :patch, -> { lot_path(lot) },
+    -> { { lot: { acquired_on: Date.current.to_s, initial_quantity: "99" } } } ],
+  [ "購入の記録の削除", :delete, -> { lot_path(lot) }, -> { {} } ],
+
   [ "カテゴリ一覧", :get, -> { categories_path }, -> { {} } ],
   [ "カテゴリの追加フォーム", :get, -> { new_category_path }, -> { {} } ],
   [ "カテゴリの追加", :post, -> { categories_path }, -> { { category: { name: "しんき" } } } ],
@@ -41,6 +49,7 @@ authenticated_actions = [
 
 RSpec.describe "品目とマスタの認可", type: :request do
   let(:item) { create(:item, name: "もとの品目") }
+  let(:lot) { create(:lot, item: item, initial_quantity: 5) }
   let(:category) { create(:category, name: "もとのカテゴリ") }
   let(:storage_location) { create(:storage_location, name: "もとの保管場所") }
   let(:store) { create(:store, name: "もとの店舗") }
@@ -60,7 +69,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
   # 突き合わせるので、アクションを足して表に足し忘れるとここが落ちる
   it "表は品目とマスタの全ルートを網羅している" do
     target_controllers = %w[
-      items items/archives
+      items items/archives lots
       categories categories/positions
       storage_locations storage_locations/positions
       stores
@@ -90,12 +99,13 @@ RSpec.describe "品目とマスタの認可", type: :request do
 
     it "すべて叩いてもレコードは増えない" do
       item
+      lot
       category
       storage_location
       store
 
       expect { request_all_actions }.not_to change {
-        [ Item.count, Category.count, StorageLocation.count, Store.count ]
+        [ Item.count, Lot.count, StockMovement.count, Category.count, StorageLocation.count, Store.count ]
       }
     end
 
@@ -104,6 +114,8 @@ RSpec.describe "品目とマスタの認可", type: :request do
 
       expect(item.reload.name).to eq "もとの品目"
       expect(item).not_to be_archived
+      expect(lot.reload.initial_quantity).to eq 5
+      expect(item.current_quantity).to eq 5
       expect(category.reload.name).to eq "もとのカテゴリ"
       expect(storage_location.reload.name).to eq "もとの保管場所"
       expect(store.reload.name).to eq "もとの店舗"

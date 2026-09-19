@@ -151,6 +151,26 @@ RSpec.describe "品目", type: :request do
       expect(rendered_list("品目一覧")).not_to include "ティッシュ"
     end
 
+    it "在庫数が出る (キャッシュ列なので集計しない)" do
+      item = create(:item, name: "ティッシュ", unit: "箱")
+      create(:lot, item: item, initial_quantity: 37)
+
+      get items_path
+
+      expect(rendered_list("品目一覧")).to include "ティッシュ"
+      expect(rendered_list("品目一覧")).to include "37"
+    end
+
+    it "在庫のある品目が増えてもクエリ数は増えない (在庫数はキャッシュ列)" do
+      create(:lot, item: create(:item), initial_quantity: 3)
+      get items_path # ウォームアップ
+
+      baseline = count_queries { get items_path }
+      3.times { create(:lot, item: create(:item), initial_quantity: 3) }
+
+      expect(count_queries { get items_path }).to eq baseline
+    end
+
     it "品目が増えてもクエリ数は増えない (カテゴリと保管場所を includes している)" do
       create(:item, category: create(:category), storage_location: create(:storage_location))
       get items_path # ウォームアップ (初回のスキーマ読み込みなどを数えない)
@@ -193,6 +213,114 @@ RSpec.describe "品目", type: :request do
       expect(settings).to include "残り 30 日"      # そろそろ購入
       expect(settings).to include "残り 10 日"      # 購入推奨
       expect(settings).to include "14 日前から警告" # 期限警告日数
+    end
+
+    describe "ロット一覧" do
+      let(:item) { create(:item, name: "トイレットペーパー", unit: "ロール", tracks_expiry: true) }
+
+      it "残数・期限・購入日・店舗・単価が出る" do
+        create(:lot, item: item, initial_quantity: 12, price_yen: 456,
+          acquired_on: Date.current - 3, expires_on: Date.current + 30,
+          store: create(:store, name: "あおぞらスーパー"))
+
+        get item_path(item)
+
+        lots = rendered_list("ロット一覧")
+        expect(lots).to include "残り 12 ロール"
+        expect(lots).to include I18n.l(Date.current + 30)  # 期限
+        expect(lots).to include I18n.l(Date.current - 3)   # 購入日
+        expect(lots).to include "あおぞらスーパー"
+        expect(lots).to include "38円/ロール"              # 456 / 12
+      end
+
+      it "在庫のあるロットは期限が近い順に並ぶ" do
+        create(:lot, item: item, initial_quantity: 1, expires_on: Date.current + 30, note: "あとの期限")
+        create(:lot, item: item, initial_quantity: 1, expires_on: Date.current + 3, note: "さきの期限")
+
+        get item_path(item)
+
+        lots = rendered_list("ロット一覧")
+        expect(lots.index("さきの期限")).to be < lots.index("あとの期限")
+      end
+
+      # 残 0 のロットは畳んで、在庫のあるロットだけを前に出す
+      it "使い切ったロットはロット一覧に出ず、畳まれた一覧に入る" do
+        depleted = create(:lot, item: item, initial_quantity: 3, note: "つかいきった")
+        create(:lot, item: item, initial_quantity: 5, note: "のこってる")
+        create(:stock_movement, lot: depleted, kind: :usage, quantity: -3)
+        Stock::Recalculator.call(item)
+
+        get item_path(item)
+
+        expect(rendered_list("ロット一覧")).to include "のこってる"
+        expect(rendered_list("ロット一覧")).not_to include "つかいきった"
+        expect(rendered_list("使い切ったロット一覧")).to include "つかいきった"
+      end
+
+      it "ロットが無ければその旨を出す" do
+        get item_path(item)
+
+        expect(response.body).to include "在庫のあるロットはまだありません"
+      end
+
+      # 調整ロット (価格 nil) で平均が歪まないようにする
+      it "単価の平均は価格のあるロットだけで計算する" do
+        create(:lot, item: item, initial_quantity: 12, price_yen: 456)
+        create(:lot, item: item, initial_quantity: 10, price_yen: 200)
+        create(:lot, item: item, initial_quantity: 100, price_yen: nil)
+
+        get item_path(item)
+
+        expect(response.parsed_body.at("section[aria-label='ロット']").text).to include "平均 30円/ロール"
+      end
+
+      it "10 円未満の単価は小数 1 桁で出す (0 円に潰さない)" do
+        create(:lot, item: item, initial_quantity: 100, price_yen: 30)
+
+        get item_path(item)
+
+        expect(rendered_list("ロット一覧")).to include "0.3円/ロール"
+      end
+
+      # 何年も使っている品目で、使い切ったロットの行が無限に伸びないようにする
+      it "使い切ったロットは新しいものから決まった件数だけ出す" do
+        stub_const("ItemsController::DEPLETED_LOTS_LIMIT", 1)
+        old = create(:lot, item: item, initial_quantity: 1, acquired_on: Date.current - 10,
+          note: "ふるいロット")
+        recent = create(:lot, item: item, initial_quantity: 1, note: "あたらしいロット")
+        [ old, recent ].each { |lot| create(:stock_movement, lot: lot, kind: :usage, quantity: -1) }
+        Stock::Recalculator.call(item)
+
+        get item_path(item)
+
+        expect(rendered_list("使い切ったロット一覧")).to include "あたらしいロット"
+        expect(rendered_list("使い切ったロット一覧")).not_to include "ふるいロット"
+        expect(response.body).to include "使い切ったロット (2 件)"
+      end
+
+      it "価格のあるロットが無ければ平均は出さない" do
+        create(:lot, item: item, initial_quantity: 12, price_yen: nil)
+
+        get item_path(item)
+
+        expect(response.parsed_body.at("section[aria-label='ロット']").text).not_to include "平均"
+      end
+
+      it "ロットが増えてもクエリ数は増えない (店舗を includes している)" do
+        create(:lot, item: item, store: create(:store))
+        get item_path(item) # ウォームアップ
+
+        baseline = count_queries { get item_path(item) }
+        3.times { create(:lot, item: item, store: create(:store)) }
+
+        expect(count_queries { get item_path(item) }).to eq baseline
+      end
+
+      it "「購入を記録」から購入の入力フォームへ行ける" do
+        get item_path(item)
+
+        expect(response.body).to include new_item_lot_path(item)
+      end
     end
 
     it "アーカイブ済みの品目でも詳細は開ける" do

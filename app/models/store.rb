@@ -1,6 +1,9 @@
 class Store < ApplicationRecord
-  # 店舗は position を持たない (docs/spec/01-domain-model.md 2 節) ので名前順に並べる。
-  # 参照元の lots は Phase 7 で追加する (そこで dependent: :nullify を付ける)
+  # マスタの削除は nullify。購入の記録は消さず、店舗だけを外す
+  # (docs/spec/01-domain-model.md 3 節)。DB 側の外部キーも on_delete: :nullify にしてある
+  has_many :lots, dependent: :nullify
+
+  # 店舗は position を持たない (docs/spec/01-domain-model.md 2 節) ので名前順に並べる
   scope :ordered, -> { order(:name, :id) }
 
   normalizes :name, with: Normalizations::STRIP

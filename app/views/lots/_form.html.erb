@@ -1,0 +1,100 @@
+<%# locals: (item:, lot:, stores:, submit_label:) %>
+<%= form_with model: lot, url: (lot.new_record? ? item_lots_path(item) : lot_path(lot)),
+      class: "mt-6 space-y-5" do |form| %>
+  <%= render "form_errors", record: lot %>
+
+  <% if lot.new_record? %>
+    <fieldset>
+      <legend class="<%= label_classes %>"><%= Lot.human_attribute_name(:kind) %></legend>
+      <div class="mt-2 space-y-1">
+        <% Lot::RECORDABLE_KINDS.each do |kind| %>
+          <label class="flex min-h-11 items-center gap-3">
+            <%= form.radio_button :kind, kind, class: "size-5" %>
+            <span class="text-sm text-slate-700"><%= t("enums.lot.kind.#{kind}") %></span>
+          </label>
+        <% end %>
+      </div>
+      <p class="<%= hint_classes %>">今ある在庫をまとめて登録するときは「初期在庫」を選びます。</p>
+    </fieldset>
+  <% end %>
+
+  <%#
+    数量の入れ方。JS が無くても動かすため、切り替えボタンは既定で hidden にしておき、
+    Stimulus (quantity_input_controller.js) が付いたときだけ出す。
+    JS が無いときは入数・パック数・数量がすべて送られ、サーバ側 (Lot#apply_pack_quantity) が
+    「入数とパック数がそろっていればその積」を数量にする。
+  %>
+  <fieldset data-controller="quantity-input">
+    <legend class="<%= label_classes %>">数量の入れ方</legend>
+
+    <div class="mt-2 flex gap-2" data-quantity-input-target="switcher" hidden>
+      <% { "pack" => "入数 × パック数", "direct" => "直接入力" }.each do |mode, mode_label| %>
+        <label class="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 px-3">
+          <input type="radio" name="quantity_mode" value="<%= mode %>" class="size-5"
+                 data-quantity-input-target="mode"
+                 data-action="change->quantity-input#update"
+                 <%= "checked" if (mode == "pack") == lot.pack_size.present? %>>
+          <span class="text-sm text-slate-700"><%= mode_label %></span>
+        </label>
+      <% end %>
+    </div>
+
+    <div class="mt-3 grid grid-cols-2 gap-3" data-quantity-input-target="pack">
+      <div>
+        <%= form.label :pack_size, class: label_classes %>
+        <%= form.number_field :pack_size, min: 1, inputmode: "numeric", class: field_classes %>
+      </div>
+      <div>
+        <%= form.label :pack_count, class: label_classes %>
+        <%= form.number_field :pack_count, min: 1, inputmode: "numeric", class: field_classes %>
+      </div>
+    </div>
+
+    <div class="mt-3" data-quantity-input-target="direct">
+      <%= form.label :initial_quantity, class: label_classes %>
+      <%= form.number_field :initial_quantity, min: 1, inputmode: "numeric", class: field_classes %>
+    </div>
+
+    <p class="<%= hint_classes %>" data-quantity-input-target="hint">
+      入数とパック数の両方を入れると、その掛け算が数量になります。
+      数量を直接入れたいときは、入数とパック数を空にしてください。
+      <% unless lot.new_record? %>
+        編集では、書き換えたほうが優先されます。
+      <% end %>
+    </p>
+  </fieldset>
+
+  <div>
+    <%= form.label :acquired_on, class: label_classes %>
+    <%# 未来日は記録できない (docs/spec/01-domain-model.md 2 節) %>
+    <%= form.date_field :acquired_on, max: Date.current, required: true, class: field_classes %>
+  </div>
+
+  <% if item.tracks_expiry? %>
+    <div>
+      <%= form.label :expires_on, class: label_classes %>
+      <%= form.date_field :expires_on, class: field_classes %>
+      <p class="<%= hint_classes %>">分からなければ空のままで構いません。</p>
+    </div>
+  <% end %>
+
+  <div>
+    <%= form.label :price_yen, class: label_classes %>
+    <%= form.number_field :price_yen, min: 0, inputmode: "numeric",
+          placeholder: "税込で入力", class: field_classes %>
+    <p class="<%= hint_classes %>">レシートの合計 (税込) を入れます。単価は数量から計算します。</p>
+  </div>
+
+  <div>
+    <%= form.label :store_id, class: label_classes %>
+    <%= form.collection_select :store_id, stores, :id, :name,
+          { include_blank: "未設定" }, class: field_classes %>
+  </div>
+
+  <div>
+    <%= form.label :note, class: label_classes %>
+    <%= form.text_area :note, rows: 2, class: field_classes %>
+  </div>
+
+  <%= form.submit submit_label, class: primary_button_classes %>
+<% end %>

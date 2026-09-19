@@ -33,7 +33,10 @@ RSpec.describe "グローバルナビ", type: :system do
     item = create(:item)
     sign_in_as create(:user)
 
-    [ items_path, item_path(item), new_item_path, edit_item_path(item) ].each do |path|
+    lot = create(:lot, item: item)
+
+    [ items_path, item_path(item), new_item_path, edit_item_path(item),
+      new_item_lot_path(item), edit_lot_path(lot) ].each do |path|
       visit path
 
       within(tab_bar) do

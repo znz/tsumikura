@@ -1,0 +1,10 @@
+<% content_for :title, "購入を記録" %>
+
+<p class="text-sm">
+  <%= link_to "← #{@item.name}", item_path(@item), class: "text-blue-600 underline" %>
+</p>
+
+<h1 class="mt-2 text-2xl font-bold text-slate-900">購入を記録</h1>
+<p class="<%= hint_classes %>">「<%= @item.name %>」の在庫が増えます。</p>
+
+<%= render "form", item: @item, lot: @lot, stores: @stores, submit_label: "記録する" %>

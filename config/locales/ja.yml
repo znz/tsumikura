@@ -16,6 +16,8 @@ ja:
       storage_location: 保管場所
       store: 店舗
       item: 品目
+      lot: 購入の記録
+      stock_movement: 在庫の記録
     attributes:
       category:
         name: 名前
@@ -49,6 +51,30 @@ ja:
         current_quantity: 在庫数
         tracking_started_on: 記録開始日
         last_consumed_on: 最終消費日
+      lot:
+        item: 品目
+        kind: 種別
+        acquired_on: 購入日
+        expires_on: 期限日
+        initial_quantity: 数量
+        remaining_quantity: 残数
+        pack_size: 入数
+        pack_count: パック数
+        price_yen: 金額 (税込)
+        store: 店舗
+        store_id: 店舗
+        user: 記録者
+        note: メモ
+        depleted_at: 使い切った日時
+      stock_movement:
+        item: 品目
+        lot: ロット
+        kind: 種別
+        quantity: 数量
+        occurred_on: 日付
+        disposal_reason: 廃棄理由
+        user: 記録者
+        note: メモ
       user:
         name: 表示名
         email_address: メールアドレス
@@ -77,6 +103,25 @@ ja:
               # そろそろ購入の日数だけを上書きすると、空欄の「購入推奨の日数」にエラーが付く。
               # 何と比べて駄目なのかが分かるよう、既定値と合成したあとの実効値を両方入れる
               greater_than_soon: " (%{urgent} 日) は、そろそろ購入の日数 (%{soon} 日) 以下にしてください"
+        lot:
+          attributes:
+            acquired_on:
+              # 消費イベントが必ず今日以前にあることを予測が前提にしている
+              future: に未来の日付は指定できません
+            initial_quantity:
+              below_consumed: は、このロットから既に使われた数 (%{consumed}) より小さくできません
+            base:
+              # 棚卸のマイナス差分を消すと、確定済みの棚卸の記録と消費ペースまで壊れる
+              consumed: 使用・廃棄・棚卸の記録があるロットは削除できません
+        stock_movement:
+          attributes:
+            occurred_on:
+              future: に未来の日付は指定できません
+            quantity:
+              must_be_positive: は入庫の記録なので 1 以上でなければなりません
+              must_be_negative: は出庫の記録なので負の数でなければなりません
+            item:
+              mismatched_lot: がロットの品目と一致していません
 
   # 役割の表示名。ActiveRecord の enum には既定の i18n が無いので独自に持つ
   # (app/helpers/application_helper.rb の user_role_label)
@@ -90,3 +135,14 @@ ja:
         auto: 自動
         manual: 手動
         none: 予測しない
+    lot:
+      kind:
+        purchase: 購入
+        initial: 初期在庫
+        adjustment: 調整
+    stock_movement:
+      kind:
+        purchase: 入庫
+        usage: 使用
+        adjustment: 調整
+        disposal: 廃棄

@@ -30,13 +30,14 @@ class StoresController < ApplicationController
     end
   end
 
-  # 店舗を参照するのは購入記録 (lots) で、Phase 7 で追加する。
-  # そのときに dependent: :nullify と「n 件の購入記録から外れます」の確認を足す
+  # 削除は nullify。購入の記録は消えず、店舗だけが外れる (docs/spec/01-domain-model.md 3 節)
   def destroy
     name = @store.name
+    detached = @store.lots.count
     @store.destroy
 
-    redirect_to stores_path, status: :see_other, notice: "店舗「#{name}」を削除しました。"
+    redirect_to stores_path, status: :see_other,
+      notice: "店舗「#{name}」を削除しました。#{detached} 件の購入の記録から店舗が外れました。"
   end
 
   private

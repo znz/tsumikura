@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_20_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_000006) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -52,6 +52,34 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000004) do
     t.index ["name"], name: "index_items_on_name"
     t.index ["storage_location_id"], name: "index_items_on_storage_location_id"
     t.check_constraint "current_quantity >= 0", name: "items_current_quantity_non_negative"
+  end
+
+  create_table "lots", force: :cascade do |t|
+    t.date "acquired_on", null: false
+    t.datetime "created_at", null: false
+    t.datetime "depleted_at"
+    t.date "expires_on"
+    t.integer "initial_quantity", null: false
+    t.bigint "item_id", null: false
+    t.integer "kind", default: 0, null: false
+    t.text "note"
+    t.integer "pack_count"
+    t.integer "pack_size"
+    t.integer "price_yen"
+    t.integer "remaining_quantity", default: 0, null: false
+    t.bigint "store_id"
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["expires_on"], name: "index_lots_on_expires_on"
+    t.index ["id", "item_id"], name: "index_lots_on_id_and_item_id", unique: true
+    t.index ["item_id", "depleted_at"], name: "index_lots_on_item_id_and_depleted_at"
+    t.index ["item_id", "expires_on"], name: "index_lots_on_item_id_and_expires_on"
+    t.index ["store_id"], name: "index_lots_on_store_id"
+    t.index ["user_id"], name: "index_lots_on_user_id"
+    t.check_constraint "(pack_size IS NULL) = (pack_count IS NULL)", name: "lots_pack_pair"
+    t.check_constraint "initial_quantity > 0", name: "lots_initial_quantity_positive"
+    t.check_constraint "pack_size IS NULL OR (pack_size * pack_count) = initial_quantity", name: "lots_pack_quantity_matches"
+    t.check_constraint "remaining_quantity >= 0", name: "lots_remaining_quantity_non_negative"
   end
 
   create_table "sessions", force: :cascade do |t|
@@ -224,6 +252,30 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000004) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
+  create_table "stock_movements", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "disposal_reason"
+    t.bigint "item_id", null: false
+    t.integer "kind", null: false
+    t.bigint "lot_id", null: false
+    t.text "note"
+    t.date "occurred_on", null: false
+    t.integer "quantity", null: false
+    t.bigint "stock_take_entry_id"
+    t.datetime "updated_at", null: false
+    t.bigint "usage_record_id"
+    t.bigint "user_id", null: false
+    t.index ["item_id", "occurred_on"], name: "index_stock_movements_on_item_id_and_occurred_on"
+    t.index ["kind", "occurred_on"], name: "index_stock_movements_on_kind_and_occurred_on"
+    t.index ["lot_id"], name: "index_stock_movements_on_lot_id"
+    t.index ["stock_take_entry_id"], name: "index_stock_movements_on_stock_take_entry_id"
+    t.index ["usage_record_id"], name: "index_stock_movements_on_usage_record_id"
+    t.index ["user_id"], name: "index_stock_movements_on_user_id"
+    t.check_constraint "disposal_reason IS NULL OR kind = 3", name: "stock_movements_disposal_reason_only_for_disposal"
+    t.check_constraint "kind = 0 AND quantity > 0 OR (kind = ANY (ARRAY[1, 3])) AND quantity < 0 OR kind = 2", name: "stock_movements_quantity_sign_matches_kind"
+    t.check_constraint "quantity <> 0", name: "stock_movements_quantity_not_zero"
+  end
+
   create_table "storage_locations", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "name", null: false
@@ -256,6 +308,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000004) do
 
   add_foreign_key "items", "categories", on_delete: :nullify
   add_foreign_key "items", "storage_locations", on_delete: :nullify
+  add_foreign_key "lots", "items"
+  add_foreign_key "lots", "stores", on_delete: :nullify
+  add_foreign_key "lots", "users", on_delete: :restrict
   add_foreign_key "sessions", "users"
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
@@ -265,4 +320,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000004) do
   add_foreign_key "solid_queue_ready_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_recurring_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_scheduled_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
+  add_foreign_key "stock_movements", "items"
+  add_foreign_key "stock_movements", "lots", column: ["lot_id", "item_id"], primary_key: ["id", "item_id"]
+  add_foreign_key "stock_movements", "users", on_delete: :restrict
 end

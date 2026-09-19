@@ -1,0 +1,32 @@
+<% content_for :title, "購入の記録を編集" %>
+
+<p class="text-sm">
+  <%= link_to "← #{@item.name}", item_path(@item), class: "text-blue-600 underline" %>
+</p>
+
+<h1 class="mt-2 text-2xl font-bold text-slate-900">購入の記録を編集</h1>
+<%# 検証エラーで再描画するときは入力途中の値が入っているので、保存済みの値を出す
+    (空や不正な日付が入っていると l() が I18n::ArgumentError で 500 になる) %>
+<p class="<%= hint_classes %>">
+  <%= l(@lot.acquired_on_in_database) %> に記録した
+  <%= @lot.initial_quantity_in_database %> <%= @item.unit %>
+  (残り <%= @lot.remaining_quantity %> <%= @item.unit %>)。
+</p>
+
+<%= render "form", item: @item, lot: @lot, stores: @stores, submit_label: "保存" %>
+
+<section class="mt-8 rounded-xl border border-red-200 bg-white p-4">
+  <h2 class="font-bold text-red-700">この記録を削除</h2>
+  <p class="mt-2 text-sm text-slate-600">
+    <% if @lot.consumed? %>
+      このロットからは既に <%= @lot.consumed_quantity %> <%= @item.unit %> 使われているため削除できません。
+      数量の間違いは上のフォームで直してください。
+    <% else %>
+      削除すると在庫が <%= @lot.remaining_quantity %> <%= @item.unit %> 減ります。
+    <% end %>
+  </p>
+  <%= button_to "削除する", lot_path(@lot), method: :delete,
+        disabled: @lot.consumed?,
+        form: { data: { turbo_confirm: "この購入の記録を削除します。よろしいですか?" } },
+        class: danger_button_classes("mt-3 disabled:cursor-not-allowed disabled:opacity-50") %>
+</section>

@@ -431,27 +431,126 @@ Item モデル (spec/models/item_spec.rb)
 **作業**
 
 - `lots` / `stock_movements` の migration とモデル
-- `Stock::Recalculator` / `Stock::RecordPurchase`
+  (`stock_movements.usage_record_id` / `stock_take_entry_id` は参照先が Phase 8 / 9 なので列と index だけ作り、
+  外部キーはそれぞれのフェーズで `add_foreign_key` する)
+- `Stock::Recalculator` / `Stock::RecordPurchase` / `Stock::ReviseLot` / `Stock::DeleteLot` / `Stock::Verifier`
 - `LotsController#new/create/edit/update/destroy`
-- 「入数 × パック数 / 直接入力」トグルの Stimulus コントローラ
+- 「入数 × パック数 / 直接入力」トグルの Stimulus コントローラ (JS 無しでも動く)
+- 品目詳細のロット一覧 (期限順・残数・期限・購入日・店舗・単価・平均単価) と「購入を記録」
+- 店舗の nullify の検証 (Phase 6 から先送り) と、編集画面の削除警告に件数を出す
 - `lib/tasks/stock.rake` に `stock:verify` / `stock:recalculate`
 
 **TDD TODO**
 
 ```
-- [ ] StockMovement は quantity が 0 では保存できない
-- [ ] 購入を記録すると Lot が 1 件と StockMovement(purchase, +12) が 1 件作られる
-- [ ] 購入を記録すると lot.remaining_quantity が 12 になる
-- [ ] 購入を記録すると item.current_quantity が 12 になる
-- [ ] 2 回購入すると item.current_quantity は合計になる
-- [ ] 入数 12 × パック数 2 で数量 24 の Lot が作られる
-- [ ] 購入記録を削除すると在庫が元に戻る
-- [ ] 購入記録の数量を編集すると在庫が再計算される
-- [ ] item.tracking_started_on は最も古い StockMovement の occurred_on になる
-- [ ] 未来の日付の購入は保存できない
-- [ ] Stock::Recalculator はキャッシュがずれていても台帳から正しい値に戻す
-- [ ] stock:verify はキャッシュと台帳の差異を検出する
+台帳のモデル (spec/models/stock_movement_spec.rb, spec/models/lot_spec.rb)
+- [x] StockMovement は quantity が 0 では保存できない (DB の check 制約でも弾かれる)
+- [x] StockMovement の符号は kind と対応する (purchase は正、usage / disposal は負)
+- [x] StockMovement の item_id はロットの品目と一致していなければならない (非正規化のずれ防止)
+- [x] 未来の日付の記録は保存できない (今日は可、明日は不可)
+- [x] Lot の数量は 1 以上 (DB の check 制約でも弾かれる)、残数を負にする UPDATE も弾かれる
+- [x] 入数 × パック数がそろっていればその積、片方だけなら直接入力の数量を使う
+- [x] 数量・入数・パック数・金額には上限があり、4 バイト整数をはみ出しても検証エラーになる
+      (入数 × パック数の積が上限を超える場合も)
+- [x] 削除済みの店舗 id では保存できない (外部キー違反で 500 にしない)
+- [x] 単価は 税込合計 ÷ 数量 (四捨五入)、平均単価は価格のあるロットだけで計算する
+- [x] 使用・廃棄の記録が紐づくロットは削除できない。入庫だけのロットは削除できる
+- [x] 既に使われた数より小さい数量には編集できない
+- [x] FEFO の並び (期限が近い順 → 期限なし → 期限切れは最後、同じ期限なら購入が古い順)
+- [x] 記録者のユーザーは物理削除できない (外部キーで止まる。restrict は RestrictViolation)
+- [x] 編集では「書き換えたほう」が勝つ (数量だけ → 直接入力、入数・パック数 → 積、
+      どちらも変えなければ積のまま)。検証エラーでは入数の入力を消さない
+- [x] DB の check 制約: 入数とパック数は両方あるか両方 NULL、積が数量と一致する
+- [x] DB の check 制約: 符号と種別の対応、廃棄理由は廃棄の記録だけ
+- [x] ロットと違う品目を指す記録は複合外部キー (lot_id, item_id) で弾かれる (UPDATE も INSERT も)
+- [x] 棚卸のマイナス差分 (負の調整) が紐づくロットも削除できない。プラスの調整だけなら削除できる
+- [x] 消費済みのロットを持つ品目を削除しても記録が半端に残らない (movement を先に消す)
+- [x] 0 時台 (JST) でも今日の購入は保存できる (CI の UTC で Date.today の混入を検出する)
+
+Stock::Recalculator (spec/models/stock/recalculator_spec.rb)
+- [x] ロットの残数は movements の総和になる
+- [x] 品目の在庫数は全ロットの残数の合計になる
+- [x] キャッシュがずれていても (多すぎても少なすぎても) 台帳から正しい値に戻す
+- [x] 残 0 のロットには depleted_at を打ち、残が戻ったら消す。再計算で日時は上書きしない
+- [x] item.tracking_started_on は最も古い StockMovement の occurred_on になる
+      (あとから古い記録を足すとより古い日に戻る)
+- [x] item.last_consumed_on は使用と棚卸のマイナス差分の最新日 (廃棄と入庫は数えない)
+- [x] 他の品目のロット・在庫には触らない
+- [x] キャッシュの書き戻しで items.updated_at は汚さない
+
+Stock::RecordPurchase / ReviseLot / DeleteLot (spec/models/stock/*_spec.rb)
+- [x] 購入を記録すると Lot が 1 件と StockMovement(purchase, +12) が 1 件作られる
+- [x] 購入を記録すると lot.remaining_quantity が 12 になる
+- [x] 購入を記録すると item.current_quantity が 12 になる
+- [x] 2 回購入すると item.current_quantity は合計になる
+- [x] 入数 12 × パック数 2 で数量 24 の Lot が作られる
+- [x] 初期在庫 (kind: initial) も同じ経路を通り、movement の kind は purchase になる
+- [x] 未来の日付の購入は保存できず、Lot も movement も作られない
+- [x] 購入記録の数量を編集すると在庫が再計算され、入庫の movement も直る
+- [x] 購入記録を削除すると在庫が元に戻る。使用済みのロットは削除できない
+- [x] キャッシュ列・記録者・品目・由来はサービスに渡しても変わらない
+- [x] 途中で例外が起きたら Lot も movement も残らない (同一トランザクション)
+- [x] 各サービスは最初の書き込みより前に品目を行ロックする (FOR UPDATE の位置を SQL で確認)
+- [x] ロックの前に読んだ古いロットを渡しても、ロットと入庫の記録がずれない (ロック後に reload)
+- [x] 別の画面で先に削除されていたら RecordNotFound になる (「削除しました」と嘘をつかない)
+- [x] 入庫の記録が無いロットの編集は例外になる (黙って直さない)
+
+購入の画面 (spec/requests/lots_spec.rb)
+- [x] 入力フォームの入数の初期値は item.default_pack_size、購入日の初期値は今日
+- [x] 期限日は tracks_expiry の品目にだけ出る
+- [x] JS が無いときのために数量の入力欄が 3 つとも出ている
+- [x] 入数・パック数・直接入力をすべて送ると入数 × パック数が優先される (JS 無しの経路)
+- [x] 店舗・金額・期限・メモも記録できる
+- [x] 種別に adjustment や知らない値を送っても購入として記録される
+- [x] アーカイブ済みの品目にも記録できる
+- [x] 壊れた入力 (未来日・空の数量・上限超え・削除済みの店舗 id) は 422 (500 にしない)
+- [x] lot キーが無ければ 400 (500 にしない)
+- [x] 残数 / 使い切った日時 / 記録者 / 品目 / 種別はフォームから変更できない (mass assignment の遮断)
+- [x] 数量を編集すると在庫が再計算され、使われた数より小さくすると 422
+- [x] 削除すると在庫が戻る。使用の記録が紐づくロットは削除できず、その旨を知らせる
+- [x] 入数 × パック数のロットは、数量だけ送れば直接入力が勝ち、入数を送れば積が勝つ
+- [x] 購入日が空 / 壊れた日付でも 422 (編集画面の再描画で 500 にしない)
+- [x] 調整ロットの編集・更新・削除は 404 (画面からは購入と初期在庫のロットだけ)
+
+品目の画面 (spec/requests/items_spec.rb)
+- [x] 品目詳細のロット一覧に残数・期限・購入日・店舗・単価が出る
+- [x] 在庫のあるロットは期限が近い順に並ぶ
+- [x] 残 0 のロットは畳まれた一覧に入り、新しいものから決まった件数だけ出す
+- [x] 単価の平均は価格のある直近 5 件だけで計算する。10 円未満の単価は小数 1 桁で出す
+- [x] ロットが増えても品目詳細のクエリ数は増えない (store を includes)
+- [x] 品目一覧に在庫数が出る。在庫のある品目が増えてもクエリ数は増えない (キャッシュ列)
+
+店舗の nullify (spec/models/store_spec.rb, spec/requests/stores_spec.rb)
+- [x] 店舗を削除しても購入の記録は消えず、店舗だけが外れる (在庫数も変わらない)
+- [x] コールバックを通らない delete でも DB 側の on_delete: :nullify が効く
+- [x] 削除後に「n 件の購入の記録から外れました」と知らせ、編集画面に「n 件から外れます」を出す
+
+認可 (spec/requests/authorization_spec.rb)
+- [x] 表に購入の全ルート (5 種) を足し、未ログインではすべてログイン画面にリダイレクトされる
+- [x] 未ログインで叩いても Lot / StockMovement は増えず、既存のロットも変わらない
+
+画面 (spec/system/lots_spec.rb)
+- [x] JS が無くても品目詳細から購入を記録でき、在庫とロット一覧が増える
+- [x] JS が無いときは切り替えボタンを出さず、数量の入力欄を 3 つとも出す
+- [x] 入数とパック数を空にすれば直接入力の数量で記録できる
+- [x] 未来の日付はサーバ側で弾かれ、フォームに戻る
+- [x] 記録した購入を編集・削除すると在庫が追随する
+- [ ] 実ブラウザでは入力方法を切り替えられ、使わない側の欄は送られない
+      (js: true。ローカルには Chrome が無く skip されるので、CI で初めて実行される)
+
+rake タスク (spec/tasks/stock_spec.rb)
+- [x] stock:verify はキャッシュと台帳の差異を検出する (差異があれば異常終了)
+- [x] stock:verify は差異が無ければ正常終了し、ずれていない品目は出力に並ばない
+- [x] stock:verify は使い切った日時のずれ、入庫の記録とのずれ (数量・日付・記録なし)、
+      ロットと違う品目を指す記録も検出する
+- [x] stock:recalculate は全品目のキャッシュを直し、そのあと stock:verify が通る
+- [x] stock:recalculate は直せない品目があっても他は直し、一覧を出して異常終了する
 ```
+
+**検出範囲 (`stock:verify`)**: `lots.remaining_quantity` / `lots.depleted_at` /
+`items.current_quantity` / `tracking_started_on` / `last_consumed_on` のキャッシュのずれに加えて、
+**再計算では直らないずれ** (入庫 movement とロットの数量・日付、入庫 movement が無いロット、
+`stock_movements.item_id` とロットのずれ) も報告する。
 
 **動作確認**: 購入を 2 回入れて在庫が合計になる。`stock:verify` が差異 0 を報告する。
 
@@ -491,6 +590,16 @@ Item モデル (spec/models/item_spec.rb)
 - [ ] 用途を指定した使用記録は item_purpose_id を持つ
 - [ ] ItemPurpose#replacement_interval_days は used_on の差分の中央値を返す
 - [ ] 使用記録が 1 件の用途は interval を返さず、最終使用日だけを返す
+
+Phase 7 からの申し送り (docs/spec/01-domain-model.md 5 節)
+- [ ] usage_records を作ったら stock_movements.usage_record_id に add_foreign_key する
+- [ ] Stock::Allocator は item.lock! の「あと」に lots.available.fefo を読む
+      (ロックの前に読んだロットで引き当てない)
+- [ ] 在庫不足の補填で作った調整ロットは、使用記録の削除・編集で補填の +movement ごと消える
+      (+movement にも usage_record_id を持たせ、movement が無くなった調整ロットは削除する)
+- [ ] 入れ子で呼ぶサービスには call! (例外を上げる) を用意する
+      (内側の ActiveRecord::Rollback は内側の transaction に握りつぶされ、外側はコミットされる)
+- [ ] stock:verify に「usage_record の quantity == 紐づく movements の合計」を足す
 ```
 
 **動作確認**: スマホ幅で品目一覧の「使った」を押すと在庫が 1 減り、トーストの「取り消し」で戻る。
@@ -523,6 +632,13 @@ Item モデル (spec/models/item_spec.rb)
 - [ ] 廃棄を記録すると在庫が減り、kind: disposal の StockMovement が作られる
 - [ ] 棚卸のマイナス差分は item.last_consumed_on を更新する
 - [ ] 廃棄は item.last_consumed_on を更新しない
+
+Phase 7 からの申し送り (docs/spec/01-domain-model.md 5 節)
+- [ ] stock_take_entries を作ったら stock_movements.stock_take_entry_id に add_foreign_key する
+- [ ] 棚卸の確定で複数の品目をロックするときは id の昇順で lock! する (デッドロック防止)
+- [ ] 棚卸のマイナス差分が紐づくロットは削除できない (Phase 7 のガードが効いていること)
+- [ ] 既存ロットに正の adjustment を付ける設計にするなら、Stock::ReviseLot の
+      「入庫 = 最初の正の movement」という前提と数量の検証を作り直す
 ```
 
 **動作確認**: 保管場所を選んで数件を数え、確定すると在庫が実数に一致する。
@@ -545,6 +661,8 @@ Item モデル (spec/models/item_spec.rb)
 **TDD TODO**
 
 ```
+- [ ] SnapshotBuilder は消費の定義に StockMovement.consumption スコープを使う
+      (「使用と負の調整」の定義を Stock::Recalculator と 1 か所にそろえる)
 - [ ] SnapshotBuilder は usage と負の adjustment を消費量に含める
 - [ ] SnapshotBuilder は disposal を消費量に含めない
 - [ ] SnapshotBuilder は purchase と正の adjustment を消費量に含めない

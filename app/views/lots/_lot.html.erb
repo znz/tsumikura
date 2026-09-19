@@ -1,0 +1,30 @@
+<%# locals: (lot:, item:) %>
+<li class="flex items-start justify-between gap-3 py-3">
+  <div class="min-w-0">
+    <p class="font-medium text-slate-900">
+      残り <%= lot.remaining_quantity %> <%= item.unit %>
+      <span class="text-sm font-normal text-slate-500">/ <%= lot.initial_quantity %> <%= item.unit %></span>
+      <% unless lot.kind_purchase? %>
+        <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+          <%= lot_kind_label(lot) %>
+        </span>
+      <% end %>
+    </p>
+    <p class="mt-1 text-sm text-slate-500">
+      <% if item.tracks_expiry? %>
+        期限: <%= lot.expires_on ? l(lot.expires_on) : "なし" %> ・
+      <% end %>
+      購入日: <%= l(lot.acquired_on) %>
+    </p>
+    <p class="mt-1 text-sm text-slate-500">
+      <%= lot.store&.name || "店舗の記録なし" %>
+      <% if lot.unit_price_yen %>
+        ・ <%= unit_price_text(lot.unit_price_yen, item.unit) %>
+      <% end %>
+    </p>
+    <% if lot.note.present? %>
+      <p class="mt-1 text-sm text-slate-500"><%= lot.note %></p>
+    <% end %>
+  </div>
+  <%= link_to "編集", edit_lot_path(lot), class: secondary_button_classes("shrink-0") %>
+</li>

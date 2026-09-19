@@ -60,4 +60,45 @@ RSpec.describe "店舗", type: :request do
 
     expect(response).to redirect_to stores_path
   end
+
+  # 削除は nullify。購入の記録は消えず、店舗だけが外れる
+  describe "削除と購入の記録" do
+    it "削除しても購入の記録は消えず、店舗だけが外れる" do
+      store = create(:store)
+      item = create(:item)
+      lot = create(:lot, item: item, store: store, initial_quantity: 12)
+
+      expect { delete store_path(store) }.not_to change { Lot.count }
+
+      expect(lot.reload.store_id).to be_nil
+      expect(item.reload.current_quantity).to eq 12
+    end
+
+    it "削除後に「n 件の購入の記録から外れました」と知らせる" do
+      store = create(:store)
+      create(:lot, store: store)
+      create(:lot, store: store)
+
+      delete store_path(store)
+      follow_redirect!
+
+      expect(response.body).to include "2 件の購入の記録から店舗が外れました"
+    end
+
+    # 確認ダイアログ (JS) だけに頼らず、外れる件数をサーバ側で出す
+    it "削除前に「n 件の購入の記録から外れます」を編集画面に出す" do
+      store = create(:store)
+      create(:lot, store: store)
+
+      get edit_store_path(store)
+
+      expect(response.body).to include "1 件の購入の記録から店舗が外れます"
+    end
+
+    it "使われていない店舗の編集画面では 0 件と出る" do
+      get edit_store_path(create(:store))
+
+      expect(response.body).to include "0 件の購入の記録から店舗が外れます"
+    end
+  end
 end

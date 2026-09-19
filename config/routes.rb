@@ -12,7 +12,12 @@ Rails.application.routes.draw do
   # アーカイブ / 復元を Items::ArchivesController に分ける
   resources :items, except: :destroy do
     resource :archive, only: %i[ create destroy ], module: :items
+    # 購入 (ロット) の入力は品目配下
+    resources :lots, only: %i[ new create ]
   end
+  # 編集・削除は品目 id を URL に持たない (shallow)。
+  # ロットの一覧・詳細は品目詳細が兼ねるので index / show は置かない
+  resources :lots, only: %i[ edit update destroy ]
 
   # マスタ。show は一覧で足りるので置かない。
   # 並べ替えは JS 無しで動く「上へ / 下へ」なので、position の更新も 1 つのリソースにする

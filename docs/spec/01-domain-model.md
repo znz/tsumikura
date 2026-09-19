@@ -52,7 +52,11 @@ item.current_quantity   == item.lots.sum(:remaining_quantity)      … キャッ
 
 - `stores` マスタ (name, note)。`lots.store_id` は NULL 可。
 - 価格は `lots.price_yen` (integer, **税込合計金額**)。レシートを見て入力するのが自然なため。
-- **単価は導出** (`price_yen / initial_quantity`)。品目詳細に「最近の単価: 平均 38 円/本」を表示する。単価の平均は `price_yen IS NOT NULL` のロットのみで計算する (調整ロットの価格 NULL で平均が歪まないように)。
+- **単価は導出** (`price_yen / initial_quantity`)。品目詳細に「最近の単価: 平均 38 円/本」を表示する。
+  - 単価の平均は `price_yen IS NOT NULL` のロットのみで計算する (調整ロットの価格 NULL で平均が歪まないように)。
+  - 「最近」は**購入日の新しい順に 5 件** (`Lot::RECENT_PRICED_LOTS`)。何年も前の単価に引きずられないようにする。
+  - 平均は**その 5 件の総額 ÷ 総数量** (単価の単純平均ではない)。
+  - 端数は四捨五入して円単位。ただし**単価が 10 円未満のときだけ小数 1 桁**で出す (100 枚 30 円 → 0.3 円/枚。四捨五入すると 0 円に潰れるため)。
 - 通貨は JPY 固定 (`currency` カラムは持たない)。円は最小単位が 1 なので integer で十分。
 - 税抜入力は用意しない (「税込で入力」とプレースホルダで明示する)。
 
@@ -276,6 +280,18 @@ item_alert_states                     # Web Push の重複通知防止
 
 日付の列 (`lots.acquired_on` / `stock_movements.occurred_on` / `usage_records.used_on` / `stock_takes.counted_on`) には**未来の日付を指定できない** (モデルのバリデーション)。過去日は自由に指定できる。消費イベントが必ず今日以前にあることを、[予測](02-forecast.md) が前提にしている。
 
+- `stock_movements.usage_record_id` / `stock_take_entry_id` は、参照先のテーブルを作るフェーズ (使用記録 / 棚卸) で `add_foreign_key` する。列と index は在庫台帳と同時に作っておく。
+- `stock_movements.item_id` は**複合外部キー** `(lot_id, item_id) → lots(id, item_id)` で守る (`lots` に `[id, item_id]` の unique index を張る)。ロットとずれた `item_id` の行は、品目単位の再計算 (`where(item_id:).group(:lot_id)`) からも検査からも黙って落ちるので、モデルの検証だけに頼らない。
+- **DB の check 制約**:
+  - `lots`: `initial_quantity > 0` / `remaining_quantity >= 0` / `(pack_size IS NULL) = (pack_count IS NULL)` / `pack_size IS NULL OR pack_size * pack_count = initial_quantity` (入数 × パック数は「両方あって積が数量と一致する」か「両方 NULL」)。
+  - `stock_movements`: `quantity <> 0` / `(kind = 0 AND quantity > 0) OR (kind IN (1,3) AND quantity < 0) OR kind = 2` (符号と種別の対応) / `disposal_reason IS NULL OR kind = 3`。
+- `lots.user_id` / `stock_movements.user_id` の外部キーは `restrict`。ユーザーは物理削除しない方針なので、記録者が消えないことを DB 側でも保証する。
+- **モデル側のバリデーション** (DB の制約ではない):
+  - 整数の上限: `lots.initial_quantity` / `pack_size` と `stock_movements.quantity` の絶対値は `Lot::MAX_QUANTITY` (= `Item::MAX_QUANTITY` 99,999)、`pack_count` は `Lot::MAX_PACK_COUNT` (999)、`price_yen` は `Lot::MAX_PRICE_YEN` (9,999,999) まで。**上限が無いと 4 バイト整数をはみ出した入力が `ActiveModel::RangeError` になり 422 ではなく 500 になる**ため必ず付ける (入数 × パック数の積も同じ検証に掛ける)。
+  - `stock_movements.quantity` の符号は `kind` と対応させる (`purchase` は正、`usage` / `disposal` は負、`adjustment` は両方あり)。符号の取り違えは在庫が逆に動くので、モデルで固定する。
+  - `stock_movements.item_id` は `lot.item_id` と一致していなければならない (集計用の非正規化がずれると在庫の合計が壊れる)。
+  - `lots.store_id` が入っていて参照先が無ければ検証エラーにする (フォームを開いている間に店舗が削除されると、そのままでは外部キー違反で 500 になる)。
+
 > `item_alert_states` を `items` のカラムにしない理由: 日次ジョブが `items` を毎日 UPDATE すると `updated_at` が汚れ、「最近編集した品目」などの表示が使えなくなるため。テーブル 1 枚のコストは小さい。
 
 ## 3. 削除と参照整合性のルール
@@ -283,7 +299,7 @@ item_alert_states                     # Web Push の重複通知防止
 | 対象 | ルール |
 |---|---|
 | 品目 | 物理削除しない。`archived_at` でアーカイブし、一覧・ダッシュボード・買い物リストから外す。履歴と集計には残す |
-| ロット | **使用 (`usage`) または廃棄 (`disposal`) の `stock_movement` が紐づくロットは削除できない** (バリデーションエラー)。入庫の記録だけのロットは削除可。削除するとその `purchase` movement も消え、在庫が元に戻る |
+| ロット | **出庫の `stock_movement` (負の数量) が紐づくロットは削除できない** (バリデーションエラー)。使用・廃棄だけでなく**棚卸のマイナス差分 (負の `adjustment`) も対象**にする (消すと確定済みの棚卸の記録と消費ペースの分子まで消えるため)。入庫の記録だけのロットは削除可。削除するとその `purchase` movement も消え、在庫が元に戻る。画面から編集・削除できるのは `kind` が `purchase` / `initial` のロットだけ (調整ロットは、元になった棚卸・使用記録の側から直す) |
 | ロットの数量編集 | 編集後の残数が負になる変更は**バリデーションエラー**にする (「このロットからは既に 5 本使われています」) |
 | 使用記録 | 削除可。分割された `stock_movements` も `dependent: :destroy` で消え、`Stock::Recalculator` で在庫が戻る |
 | 棚卸 | 下書きは削除可。確定済みは削除しない (調整 movement の履歴が残る) |
@@ -348,13 +364,32 @@ app/models/stock/
   allocator.rb            # FEFO 引き当て: (item, quantity) -> [[lot, qty], ...]
   recalculator.rb         # lot.remaining_quantity / lot.depleted_at / item.current_quantity /
                           #   tracking_started_on / last_consumed_on を再計算
+  verifier.rb             # キャッシュと台帳の差異を集める (rake stock:verify)
   record_usage.rb         # UsageRecord + StockMovement(s) を作る
-  record_purchase.rb      # Lot + StockMovement(purchase) を作る
+  record_purchase.rb      # Lot + StockMovement(purchase) を作る (kind: initial も同じ経路)
+  revise_lot.rb           # ロットの編集 (入庫の movement を直して再計算)
+  delete_lot.rb           # ロットの削除 -> 再計算
   record_disposal.rb      # StockMovement(disposal) を作る
   finalize_stock_take.rb  # StockTake 確定 -> 差分から StockMovement(adjustment) を作る
   revise_usage.rb         # 使用記録の編集 (movements を作り直して再計算)
   delete_movement.rb      # 記録削除 -> 再計算
 ```
+
+サービスは「保存できたか」を戻り値のレコード (`persisted?` / `errors`) で伝え、例外は使わない。
+検証エラーのときは `ActiveRecord::Rollback` でトランザクションを畳み、**Lot だけ・movement だけが残る
+状態を作らない**。
+
+**サービスを書くときの決まり**
+
+- **ロックの後に読み直す**。`item.lock!` の前に読んだレコード (ロット・ロット一覧) はロック待ちの間に
+  古くなっている。`lock!` の直後に `reload` してから判断・更新する。Phase 8 の `Stock::Allocator` も
+  引き当て対象の `lots.available.fefo` をロックの後に読むこと。
+- **入れ子で呼ぶサービスには `call!` を用意する**。内側の `raise ActiveRecord::Rollback` は内側の
+  `transaction` に握りつぶされ、外側はそのままコミットされてしまう。入れ子で使うときは例外
+  (`ActiveRecord::RecordInvalid`) を上げる `call!` を呼ぶ。
+- **複数の品目をロックするときは id の昇順**でロックする (デッドロック防止)。
+- 台帳が壊れている状態 (入庫の movement が無いロットなど) は黙って直さず例外にして気づけるようにする。
+- 予測 (Phase 10) の消費の定義は `StockMovement.consumption` スコープを使い回す。
 
 **引き当て順 (`Stock::Allocator`)**
 
@@ -369,6 +404,14 @@ app/models/stock/
 ```
 
 これにより「使った」は必ず成功する (設計原則 3)。`adjustment` のプラス分は消費ペースの分子に入れないので、予測は歪まない ([予測](02-forecast.md) 参照)。
+
+補填で作った調整ロットは、その使用記録を**削除・編集したときに一緒に片づける**。補填の `+movement` にも
+`usage_record_id` を持たせ、movement がすべて無くなった調整ロットは削除する (残しておくと、実在しない
+在庫を持つ空のロットが積み上がる)。
+
+`Stock::ReviseLot` は「入庫の movement = そのロットの最初の正の movement」という前提で数量を直し、
+「新しい数量 >= そのロットからの出庫の合計」を検証している。**既存のロットに正の `adjustment` を足す
+設計を入れるなら**、この前提が崩れるので「Σ movements − 旧入庫 + 新数量 >= 0」に直すこと。
 
 ## 6. 予測が参照する値
 

@@ -29,9 +29,9 @@ module ApplicationHelper
     class_names("flex min-h-11 items-center rounded-lg bg-blue-600 px-4 font-medium text-white hover:bg-blue-500", extra)
   end
 
-  # 下部タブの「品目」は、一覧だけでなく詳細やフォームでもハイライトする
+  # 下部タブの「品目」は、一覧だけでなく詳細やフォーム、品目配下の記録画面でもハイライトする
   def items_tab_current?
-    controller_path == "items" || controller_path.start_with?("items/")
+    controller_path == "items" || controller_path.start_with?("items/") || controller_path == "lots"
   end
 
   def user_role_label(user)
@@ -40,5 +40,18 @@ module ApplicationHelper
 
   def item_estimation_mode_label(item)
     t("enums.item.estimation_mode.#{item.estimation_mode}")
+  end
+
+  # ロットの由来 (購入 / 初期在庫 / 調整)
+  def lot_kind_label(lot)
+    t("enums.lot.kind.#{lot.kind}")
+  end
+
+  # 単価の表示。10 円未満は四捨五入すると 0 円に潰れるので小数 1 桁で出す
+  # (100 枚 30 円 → 0.3 円/枚。Lot.round_unit_price が Integer / Float で返し分ける)
+  def unit_price_text(price_yen, unit)
+    return nil if price_yen.nil?
+
+    "#{number_to_currency(price_yen, precision: price_yen.is_a?(Integer) ? 0 : 1)}/#{unit}"
   end
 end
