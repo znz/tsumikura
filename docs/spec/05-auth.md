@@ -10,6 +10,13 @@
 - **パスワードは常に必須**。パスキーは追加の認証手段として位置づける。デバイス紛失時に管理者がリセットできる退路を必ず残す。
 - 公開サインアップは無い。`/sign_up` に相当する画面を作らない。
 
+### パスワードの要件
+
+- **最小 8 文字** (`User::MINIMUM_PASSWORD_LENGTH`)。最大は `has_secure_password` の 72 バイト。
+- 根拠: NIST SP 800-63B の下限が 8 文字であること、ハッシュが bcrypt であること、ログイン試行に `rate_limit` が掛かっていること、家族がスマホで手入力すること、Phase 13 で常用手段をパスキーに移すこと。
+- 公開インターネットに置くので、10〜12 文字への引き上げは [未決事項](../plan/open-questions.md) に残す。
+- 複雑さの要件 (記号必須など) は課さない。長さだけを見る。
+
 ## 2. ユーザーの種類
 
 | 役割 | `role` | できること |
@@ -19,10 +26,15 @@
 
 - 家庭内なので在庫データに対する権限差は設けない。差があるのは**ユーザー管理だけ**。
 - ユーザーは**削除しない**。`deactivated_at` を打って無効化する (記録の入力者としての参照が残るため)。無効化されたユーザーはログインできず、既存セッションも失効させる。
+- コントローラは `Admin::BaseController` (管理者以外は 403) を親に持つ: `Admin::UsersController` (一覧・追加・編集)、`Admin::DeactivationsController` (無効化 / 再有効化)、`Admin::PasswordResetsController` (パスワード再設定)。
+  - 無効化を `UsersController#update` に混ぜないのは、`role` と `deactivated_at` を「編集フォームの permit 対象」にしないため。
+  - 管理者が**自分自身**に対してパスワード再設定・無効化を行う導線は一覧に出さない (自分のセッションが消えるだけで得が無い)。自分のパスワードは `/account` から変える。パスワード再設定はコントローラでも自分自身を弾く。
 
 ### 最後の管理者の保護
 
 - 有効な管理者が 1 人だけのとき、その管理者の **role 降格**と**無効化**をバリデーションで禁止する (自分自身の操作でも他人の操作でも同じ)。
+- 「有効な管理者」の数に**無効化済みの管理者は含めない**。
+- 同時実行 (2 人の管理者が同時に降格する) の競合はバリデーションでは防げないが、`tsumikura:create_admin` で必ず復旧できるので対策しない。
 - 誰もログインできなくなった場合の復旧手段として、サーバ上で `tsumikura:create_admin` を実行できるようにする ([デプロイ](../ops/deployment.md))。
 
 ## 3. 初期セットアップとユーザー追加
@@ -32,9 +44,19 @@
 bin/rails tsumikura:create_admin ADMIN_EMAIL=admin@example.com ADMIN_NAME=かんりしゃ
 ```
 
+| 環境変数 | 既定 | 挙動 |
+|---|---|---|
+| `ADMIN_EMAIL` | (必須) | 無ければ中断する |
+| `ADMIN_NAME` | かんりしゃ | 新規作成時の表示名 |
+| `ADMIN_PASSWORD` | (自動生成) | 指定するとそのパスワードにする。**既存ユーザーにも適用される** |
+| `ADMIN_RESET_PASSWORD` | — | `1` を渡すと既存ユーザーのパスワードを再生成して 1 度だけ表示する |
+
 - タスクは**冪等**にする。同じメールアドレスで 2 回実行してもユーザーは重複せず、role を admin に揃えるだけにする。
-- パスワードは自動生成して標準出力に 1 度だけ表示する (`ADMIN_PASSWORD` 環境変数で指定も可)。
-- `db/seeds.rb` は ENV なしでも成功する冪等な実装にする (CI の `db:seed:replant` を通すため)。管理者作成は seeds ではなく rake タスクに置く。
+- パスワードは自動生成して標準出力に 1 度だけ表示する。**`ADMIN_PASSWORD` はシェルの履歴や `ps` に平文で残るので、自動生成を使うほうがよい。**
+- パスワードを変えたとき (`ADMIN_PASSWORD` / `ADMIN_RESET_PASSWORD`) は、そのユーザーのセッションをすべて失効させる。
+- 対象が無効化済みだった場合、**再有効化はしない**。警告を出し、`/admin/users` からの再有効化か別の `ADMIN_EMAIL` での新規作成を促す。
+- バリデーションエラー (短すぎる `ADMIN_PASSWORD` など) はスタックトレースではなくメッセージを出して中断する。
+- `db/seeds.rb` は ENV なしでも成功する冪等な実装にする (CI の `db:seed:replant` を通すため)。管理者作成は seeds ではなく rake タスクに置く。**固定パスワードの管理者を作るのは development だけ**とし、production / test では何も作らない。
 
 以降の家族アカウントは管理者が `/admin/users` から追加する。
 
@@ -42,15 +64,36 @@ bin/rails tsumikura:create_admin ADMIN_EMAIL=admin@example.com ADMIN_NAME=かん
 |---|---|
 | 追加 | 名前 + メールアドレスを入力。初期パスワードを自動生成し、**作成直後の画面に 1 度だけ表示**する (再表示はできない) |
 | 役割変更 | member <-> admin。最後の管理者は降格できない |
-| 無効化 / 再有効化 | `deactivated_at` の設定・解除。最後の管理者は無効化できない |
-| パスワード再設定 | 管理者が新しいパスワードを生成し、画面に 1 度だけ表示する (`Admin::PasswordResetsController`)。本人のセッションはすべて失効させる |
+| 無効化 / 再有効化 | `deactivated_at` の設定・解除。最後の管理者は無効化できない。自分自身には出さない |
+| パスワード再設定 | 管理者が新しいパスワードを生成し、画面に 1 度だけ表示する (`Admin::PasswordResetsController`)。本人のセッションはすべて失効させる。自分自身には行えない |
+
+### 生成パスワードの形式
+
+- `SecureRandom.alphanumeric(4, chars: ...)` を 4 群、ハイフンで連結する (例: `s4ZC-V5gx-pVLt-C4Eb`)。
+- 文字種は 54 種。読み上げ・書き写しで取り違える **`0` `1` `i` `l` `o` `I` `O` `Q` を除外**する。ハイフン区切りも書き写しのため。
+- 強度は約 92 bit。管理者が家族に口頭・紙で渡し、受け取った側が `/account` で変える前提の一時パスワードである。
+
+### 「1 度だけ表示」の実装
+
+平文のパスワードを画面に出すのは、追加直後と再設定直後の **POST のレスポンスだけ**とする。
+
+- **リダイレクト + flash 方式は採らない。** flash は Cookie セッション (または `solid_cache` の DB) に平文で載り、リロードや「戻る」で再表示されるため。
+- 生成 → `render` で直接描画する。リダイレクトしないので、フォームには `data-turbo="false"` を付ける (Turbo はフォーム POST への 200 非リダイレクト応答を拒否する)。**この属性を外すと「発行されたのに誰も見ていない」状態になる**ので、実ブラウザの system spec (`js: true`) で守る。
+- レスポンスに `no_store` を付け、ブラウザ・中間キャッシュに残さない。
+- ページに `<meta name="turbo-cache-control" content="no-cache">` を入れ、Turbo のスナップショットキャッシュ (戻る / プレビュー) にも残さない。
+- 再設定画面は再読み込みで再 POST になりうるので、「別のパスワードが再発行されます」と注意書きする。
+- ログに平文が出ないことは `config/initializers/filter_parameter_logging.rb` の `:passw` (部分一致) で担保する。生成パスワードはそもそもリクエストパラメータに載らない。
 
 ## 4. セッション
 
 - Rails 生成のとおり `cookies.signed.permanent` を使う (実質的に長期間ログインしたまま)。家庭用でスマホから頻繁に再ログインさせたくないため。
 - 代わりに `/account` に**ログイン中のデバイス一覧**を置き、`sessions` の `ip_address` / `user_agent` / ログイン日時 (`created_at`) を表示して個別に失効できるようにする。「このデバイス以外をログアウト」も置く (`Account::SessionsController`)。
-- ログインの試行には `rate_limit to: 10, within: 3.minutes` を掛ける (認証ジェネレータの生成物に含まれる。生成結果を確認してそのまま使う)。
-- 無効化 (`deactivated_at`) されたユーザーは、パスワードが正しくてもログインできない。セッションの復元時 (`resume_session`) にも無効化を確認し、無効化と同時にそのユーザーの `sessions` を全削除する。
+- ログインの試行には `rate_limit to: 10, within: 3.minutes` を掛ける (認証ジェネレータの生成物に含まれる。生成結果を確認してそのまま使う)。パスワード変更 (`Account::PasswordsController#update`) にも同じ制限を掛ける。
+- 無効化 (`deactivated_at`) されたユーザーは、パスワードが正しくてもログインできない。エラーメッセージはパスワード誤りと**同じ文言**にして、無効化されていることを伏せる。セッションの復元時 (`resume_session`) にも無効化を確認し、無効化と同時にそのユーザーの `sessions` を全削除する。
+- **自分でパスワードを変更するには現在のパスワードが必要**とする (`Account::PasswordsController`)。変更に成功したら、**このデバイス以外のセッションをすべて失効**させる (パスワードが漏れていた場合に備える)。`has_secure_password` は空文字の代入を黙って無視するので、新しいパスワードが空・未送信のときは明示的に弾く。
+- **ログイン時とログアウト時に `reset_session`** する (セッション固定攻撃の対策)。ログイン時はログイン前の URL (`return_to_after_authenticating`) を `reset_session` の**前に**読み出す。復帰先を覚えるのは GET / HEAD のときだけにする (POST の URL に GET で戻っても 404 になるだけのため)。
+- セッション Cookie (`session_id`) は `httponly` + `SameSite=Lax` (認証ジェネレータの既定)。`secure` は production の `force_ssl` が付ける ([デプロイ](../ops/deployment.md))。
+- ログインのパラメータは `params.expect(:email_address, :password)` で受ける。欠けていたり配列で送られたりしたときは 400 にする (`authenticate_by` に渡すと `ArgumentError` で 500 になるため)。
 
 ## 5. パスキー (WebAuthn)
 

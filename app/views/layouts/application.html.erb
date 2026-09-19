@@ -2,7 +2,8 @@
 <html lang="ja">
   <head>
     <title><%= content_for(:title) || "つみくら" %></title>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%# viewport-fit=cover: 下部固定タブが env(safe-area-inset-bottom) を使えるようにする %>
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="つみくら">
     <meta name="application-name" content="つみくら">
@@ -24,9 +25,15 @@
     <%= javascript_importmap_tags %>
   </head>
 
-  <body class="bg-white text-slate-900">
-    <main class="container mx-auto px-5">
+  <body class="min-h-screen bg-slate-50 text-slate-900">
+    <%= render "layouts/flash" %>
+
+    <%# 下部タブ (約 3.5rem) + ホームインジケータの分だけ本文の下を空ける %>
+    <main class="mx-auto w-full max-w-2xl px-4 py-6 <%= "pb-[calc(7rem+env(safe-area-inset-bottom))]" if Current.user %>">
       <%= yield %>
     </main>
+
+    <%# 未ログイン (ログイン画面) にはタブを出さない %>
+    <%= render "layouts/tab_bar" if Current.user %>
   </body>
 </html>

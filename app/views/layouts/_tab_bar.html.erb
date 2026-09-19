@@ -1,0 +1,45 @@
+<%#
+  下部固定の 5 タブ (docs/spec/03-screens.md 1 節)。
+  品目 / 記録 / 買い物は Phase 6 以降で作るため、リンクにせず無効表示にする
+  (存在しないルートヘルパーを呼ばない)。
+%>
+<% item_class = "flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 py-2 text-xs font-medium" %>
+<nav class="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]"
+     aria-label="グローバルナビ">
+  <ul class="mx-auto flex max-w-2xl items-stretch">
+    <li class="flex-1">
+      <%= link_to root_path,
+            class: "#{item_class} #{current_page?(root_path) ? 'text-blue-600' : 'text-slate-600'}",
+            aria: { current: ("page" if current_page?(root_path)) } do %>
+        ホーム
+      <% end %>
+    </li>
+
+    <li class="flex-1">
+      <span class="<%= item_class %> text-slate-300" role="link" aria-disabled="true">
+        品目<span class="sr-only"> (準備中)</span>
+      </span>
+    </li>
+
+    <li class="flex-1">
+      <span class="flex min-h-14 w-full flex-col items-center justify-center py-2" role="link" aria-disabled="true">
+        <span class="flex size-11 items-center justify-center rounded-full bg-slate-200 text-2xl leading-none text-slate-400" aria-hidden="true">＋</span>
+        <span class="mt-0.5 text-xs font-medium text-slate-300">記録<span class="sr-only"> (準備中)</span></span>
+      </span>
+    </li>
+
+    <li class="flex-1">
+      <span class="<%= item_class %> text-slate-300" role="link" aria-disabled="true">
+        買い物<span class="sr-only"> (準備中)</span>
+      </span>
+    </li>
+
+    <li class="flex-1">
+      <%= link_to menu_path,
+            class: "#{item_class} #{current_page?(menu_path) ? 'text-blue-600' : 'text-slate-600'}",
+            aria: { current: ("page" if current_page?(menu_path)) } do %>
+        メニュー
+      <% end %>
+    </li>
+  </ul>
+</nav>

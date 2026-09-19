@@ -1,0 +1,88 @@
+<h1 class="text-2xl font-bold text-slate-900">アカウント設定</h1>
+
+<section class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+  <h2 class="font-bold text-slate-900">表示名とメールアドレス</h2>
+
+  <%= form_with model: @user, url: account_path, method: :patch, class: "mt-4 space-y-5" do |form| %>
+    <% if @user.errors.any? %>
+      <div class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+        <ul class="list-inside list-disc">
+          <% @user.errors.full_messages.each do |message| %>
+            <li><%= message %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <div>
+      <%= form.label :name, class: "block text-sm font-medium text-slate-700" %>
+      <%= form.text_field :name, required: true,
+            class: "mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600" %>
+    </div>
+
+    <div>
+      <%= form.label :email_address, class: "block text-sm font-medium text-slate-700" %>
+      <%= form.email_field :email_address, required: true, autocomplete: "username",
+            class: "mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600" %>
+    </div>
+
+    <%= form.submit "保存",
+          class: "min-h-11 w-full cursor-pointer rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-500" %>
+  <% end %>
+</section>
+
+<section class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+  <h2 class="font-bold text-slate-900">パスワードの変更</h2>
+
+  <%= form_with url: account_password_path, method: :patch, class: "mt-4 space-y-5" do |form| %>
+    <div>
+      <%= form.label :current_password, "現在のパスワード", class: "block text-sm font-medium text-slate-700" %>
+      <%= form.password_field :current_password, required: true, autocomplete: "current-password", maxlength: 72,
+            class: "mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600" %>
+    </div>
+
+    <div>
+      <%= form.label :password, "新しいパスワード", class: "block text-sm font-medium text-slate-700" %>
+      <%= form.password_field :password, required: true, autocomplete: "new-password", maxlength: 72,
+            class: "mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600" %>
+      <p class="mt-1 text-sm text-slate-500"><%= User::MINIMUM_PASSWORD_LENGTH %> 文字以上</p>
+    </div>
+
+    <div>
+      <%= form.label :password_confirmation, "新しいパスワード (確認)", class: "block text-sm font-medium text-slate-700" %>
+      <%= form.password_field :password_confirmation, required: true, autocomplete: "new-password", maxlength: 72,
+            class: "mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600" %>
+    </div>
+
+    <%= form.submit "パスワードを変更",
+          class: "min-h-11 w-full cursor-pointer rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-500" %>
+  <% end %>
+</section>
+
+<section class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+  <h2 class="font-bold text-slate-900">ログイン中のデバイス</h2>
+
+  <ul class="mt-4 divide-y divide-slate-200">
+    <% @sessions.each do |login_session| %>
+      <li class="flex items-center justify-between gap-2 py-3">
+        <div class="min-w-0">
+          <p class="truncate text-sm text-slate-900">
+            <%= login_session.user_agent.presence || "不明なブラウザ" %>
+            <% if login_session == Current.session %>
+              <span data-current-session class="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">このデバイス</span>
+            <% end %>
+          </p>
+          <p class="truncate text-sm text-slate-500">
+            <%= login_session.ip_address.presence || "IP 不明" %> / <%= l login_session.created_at %>
+          </p>
+        </div>
+
+        <%= button_to "ログアウト", account_session_path(login_session), method: :delete,
+              class: "min-h-11 shrink-0 rounded-lg border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50" %>
+      </li>
+    <% end %>
+  </ul>
+
+  <%= button_to "このデバイス以外をすべてログアウト", others_account_sessions_path, method: :delete,
+        class: "mt-4 min-h-11 w-full rounded-lg border border-red-300 px-4 text-sm font-medium text-red-700 hover:bg-red-50" %>
+</section>

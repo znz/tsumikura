@@ -20,7 +20,7 @@ gem "tailwindcss-rails"
 gem "jbuilder"
 
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
-# gem "bcrypt", "~> 3.1.7"
+gem "bcrypt", "~> 3.1.7"
 
 # Windows does not include zoneinfo files, so bundle the tzinfo-data gem
 gem "tzinfo-data", platforms: %i[ windows jruby ]
@@ -37,6 +37,11 @@ gem "thruster", require: false
 
 # 日本語の Rails 標準ロケールを追加
 gem "rails-i18n"
+
+# json 3 は JSON.parse のオプションをキーワード引数でしか受けず、ハッシュを位置引数で渡す
+# ActiveSupport 8.1.3 の JSON.decode (署名付き Cookie / セッションの読み出し) が ArgumentError になる。
+# Rails 側が対応したら外す
+gem "json", "< 3"
 
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 gem "image_processing", "~> 1.2"

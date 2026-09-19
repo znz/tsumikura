@@ -33,7 +33,8 @@
 | 9b | 用途マスタ | `/items/:id/purposes` | 品目詳細配下。名前・既定数量・並び順 |
 | 10 | ユーザー管理 | `/admin/users` | 管理者のみ。一覧、追加 (名前 + メール + 初期パスワードを自動生成して画面表示)、役割変更、無効化、パスワード再設定 |
 | 11 | アカウント設定 | `/account` | 表示名・メール変更、パスワード変更、パスキー一覧 / 追加 / 削除、プッシュ通知 ON/OFF + テスト送信、ログイン中セッション一覧 / 失効 |
-| 12 | ログイン | `/session/new` | メールアドレス + パスワード、「パスキーでログイン」ボタン |
+| 12 | ログイン | `/session/new` | メールアドレス + パスワード、「パスキーでログイン」ボタン。パスワード再設定のリンクは置かず「管理者に再設定してもらってください」と案内する |
+| 13 | メニュー | `/menu` | 下部タブの「メニュー」の実体。アカウント設定 / ユーザー管理 (管理者のみ) / ログアウト / マスタ・履歴への入口。ポップオーバーではなくページにする (JS なしで動き、system spec も rack_test で回せる) |
 
 ### 品目編集の予測設定
 
@@ -92,6 +93,7 @@ Rails.application.routes.draw do
   resources :storage_locations
   resources :stores
 
+  resource  :menu,     only: :show          # 下部タブの「メニュー」
   resource  :account,  only: %i[show update]
   resources :passkeys, only: %i[index create destroy] do
     post :options, on: :collection
@@ -100,6 +102,8 @@ Rails.application.routes.draw do
     post :test, on: :collection
   end
   namespace :account do
+    # パスワード変更は現在のパスワードの確認が要るので、プロフィール更新 (AccountsController#update) と分ける
+    resource :password, only: :update
     # ログイン中デバイスの失効。ログアウト (SessionsController#destroy) と分けるため Account::SessionsController にする
     resources :sessions, only: :destroy do
       delete :others, on: :collection   # このデバイス以外をログアウト
@@ -107,8 +111,11 @@ Rails.application.routes.draw do
   end
 
   namespace :admin do
-    resources :users do
+    # ユーザーは削除しないので destroy は持たない。show も一覧で足りるので置かない
+    resources :users, only: %i[index new create edit update] do
       resource :password_reset, only: %i[new create]
+      # 無効化 / 再有効化。role と deactivated_at を UsersController#update で permit しないために分ける
+      resource :deactivation,   only: %i[create destroy]
     end
   end
 

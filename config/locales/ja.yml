@@ -4,3 +4,42 @@ ja:
   date:
     formats:
       default: "%Y/%m/%d"
+  time:
+    formats:
+      default: "%Y/%m/%d %H:%M"
+
+  activerecord:
+    models:
+      user: ユーザー
+      session: セッション
+    attributes:
+      user:
+        name: 表示名
+        email_address: メールアドレス
+        password: パスワード
+        password_confirmation: パスワード (確認)
+        role: 役割
+        deactivated_at: 無効化
+        notify_purchases: 購入のお知らせ
+        notify_expiries: 期限のお知らせ
+        created_at: 登録日時
+      session:
+        ip_address: IP アドレス
+        user_agent: ブラウザ
+        created_at: ログイン日時
+    errors:
+      models:
+        user:
+          attributes:
+            role:
+              last_admin: は、管理者が 1 人しかいないため変更できません
+            deactivated_at:
+              last_admin: はできません (管理者が 1 人しかいません)
+
+  # 役割の表示名。ActiveRecord の enum には既定の i18n が無いので独自に持つ
+  # (app/helpers/application_helper.rb の user_role_label)
+  enums:
+    user:
+      role:
+        member: 一般
+        admin: 管理者

@@ -14,6 +14,8 @@
 
 - `Gemfile` から `gem "solid_cable"` を削除し、`db/cable_schema.rb` を削除する。
 - `config/cable.yml` は production も `adapter: async` にする (未使用のまま残す形でもよい)。
+- 認証ジェネレータが作る `app/channels/` は削除する (生成される `Connection#set_current_user` は `deactivated_at` を見ないので、残すと無効化したユーザーが WebSocket で認証できてしまう)。
+- **`config/application.rb` に `config.action_cable.mount_path = nil` を置く。** `app/channels/` を消しても `ActionCable::Engine` は `/cable` をマウントし、素の `Connection::Base` が未認証の WebSocket を受け付けるため。
 - 画面の即時反映は、操作したリクエストへの Turbo Stream レスポンスで行う。他のデバイスの画面が自動更新されないのは仕様とする。
 - 補足: solid_cable は既定で `polling_interval: 0.1.seconds` の DB ポーリングを行う。他のアプリと共有する Postgres に常時その負荷を掛けるのは、家庭用アプリには割に合わない。
 - 将来リアルタイム配信が必要になったら、solid_cable を primary DB に同居させて `polling_interval` を緩める形で戻せる。
@@ -193,7 +195,8 @@ git push dokku main
 # 証明書
 dokku letsencrypt:enable tsumikura
 
-# 初期管理者
+# 初期管理者 (パスワードは自動生成され、標準出力に 1 度だけ表示される)
+# ADMIN_PASSWORD での指定もできるが、シェルの履歴と ps に平文で残るので自動生成を使う
 dokku run tsumikura bin/rails tsumikura:create_admin \
   ADMIN_EMAIL=admin@example.com ADMIN_NAME=かんりしゃ
 
@@ -204,13 +207,23 @@ dokku postgres:backup-schedule tsumikura-db "0 4 * * *" <bucket>
 
 **確認すること**: `https://tsumikura.example.com/up` が 200 を返す / ログインできる / `dokku logs tsumikura` に Solid Queue の supervisor 起動ログが出る。
 
+**セッション Cookie に `secure` が付くことも確認する** (`force_ssl` が付ける。開発・test では付かないので本番でしか確かめられない)。
+
+```bash
+curl -sD - -o /dev/null -X POST https://tsumikura.example.com/session \
+  --data-urlencode 'email_address=admin@example.com' --data-urlencode 'password=...' \
+  | grep -i '^set-cookie: session_id'
+# session_id=...; path=/; expires=...; secure; HttpOnly; SameSite=Lax
+```
+
 ## 8. バックアップと復旧
 
 | 項目 | 手段 |
 |---|---|
 | 日次バックアップ | `dokku postgres:backup-schedule` で S3 等へ。または `dokku postgres:export` を cron で回す。**Phase 5 のデプロイと同時に設定する** |
 | リストア | `dokku postgres:import tsumikura-db < dump` |
-| 管理者ロックアウト | `dokku run tsumikura bin/rails tsumikura:create_admin ADMIN_EMAIL=... ADMIN_NAME=...` (冪等) |
+| 管理者がパスワードを忘れた | `dokku run tsumikura bin/rails tsumikura:create_admin ADMIN_EMAIL=<その管理者> ADMIN_RESET_PASSWORD=1`。新しいパスワードが標準出力に 1 度だけ出て、そのユーザーのセッションはすべて失効する |
+| 管理者が 1 人もいない / 対象が無効化されている | `dokku run tsumikura bin/rails tsumikura:create_admin ADMIN_EMAIL=<新しいアドレス> ADMIN_NAME=...` で**別の管理者を作る** (このタスクは無効化を解除しない)。ログイン後に `/admin/users` から元のユーザーを再有効化する |
 | 在庫キャッシュの破損 | `dokku run tsumikura bin/rails stock:verify` で差異を検出し、`stock:recalculate` で台帳から再計算する |
 | VAPID 鍵 | 鍵を失うと全購読が無効になる。`dokku config:show tsumikura` から退避しておく |
 

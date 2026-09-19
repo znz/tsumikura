@@ -190,28 +190,97 @@
 
 **作業**
 
-- `bin/rails generate authentication` → `PasswordsController` / `PasswordsMailer` / 関連ビュー・ルートを削除
+- `bin/rails generate authentication` → `PasswordsController` / `PasswordsMailer` / 関連ビュー・ルートを削除。
+  Action Cable を使わない方針なので `app/channels/` も削除する
 - `users` に `name` / `role` / `deactivated_at` / 通知フラグを追加する migration
-- `Admin::UsersController` (管理者のみ)、`Admin::PasswordResetsController` (新パスワード生成 → 画面表示)
+  (`webauthn_id` は Phase 13)
+- `User` に `enum :role` / `active` スコープ / バリデーション / 最後の管理者の保護
+- 無効化ユーザーのログイン拒否 (`SessionsController#create`) とセッション復元の拒否 (`Session.active`)
+- `Admin::BaseController` (管理者以外は 403)、`Admin::UsersController` (一覧・追加・編集)、
+  `Admin::DeactivationsController` (無効化 / 再有効化)、`Admin::PasswordResetsController` (新パスワード生成 → 画面表示)
 - `lib/tasks/tsumikura.rake` に `tsumikura:create_admin`、`db/seeds.rb` を冪等に
-- `/account` (表示名・パスワード変更・ログイン中セッション一覧)
-- 下部タブナビとレイアウト骨格、ダッシュボードのダミー
+- `/account` (`AccountsController`) + `Account::PasswordsController` (現在のパスワード確認つき) +
+  `Account::SessionsController` (個別失効 / このデバイス以外をログアウト)
+- 下部タブナビとレイアウト骨格 (`MenusController`)、ダッシュボードのダミー
+- `spec/support/authentication_helper.rb` (request 用 `sign_in` / system 用 `sign_in_as`)
 
 **TDD TODO**
 
 ```
-- [ ] 未ログインで / にアクセスするとログイン画面にリダイレクトされる
-- [ ] 正しいメールアドレスとパスワードでログインするとダッシュボードに遷移する
-- [ ] 誤ったパスワードではログインできない
-- [ ] User#admin? は role が admin のとき true
-- [ ] 一般ユーザーが /admin/users にアクセスすると 403
-- [ ] 管理者はユーザーを作成でき、生成された初期パスワードが 1 度だけ表示される
-- [ ] 管理者はパスワードを再設定でき、対象ユーザーの既存セッションが失効する
-- [ ] 無効化されたユーザーはログインできない
-- [ ] 管理者が 1 人のとき、その管理者は降格できない
-- [ ] 管理者が 1 人のとき、その管理者は無効化できない
-- [ ] /account でセッションを個別に失効できる
-- [ ] tsumikura:create_admin タスクは冪等 (2 回実行してもユーザーが重複しない)
+ログインとセッション (spec/requests/sessions_spec.rb)
+- [x] 未ログインで / にアクセスするとログイン画面にリダイレクトされる
+- [x] 正しいメールアドレスとパスワードでログインするとダッシュボードに遷移する
+- [x] ログイン前にアクセスしようとした URL に戻る (reset_session で失わない)
+- [x] GET 以外で認証を要求されたときは、その URL を復帰先にしない
+- [x] 誤ったパスワードではログインできない
+- [x] 無効化されたユーザーはログインできない
+- [x] 無効化されたユーザーのエラーメッセージはパスワード誤りと区別できない
+- [x] ログイン後に無効化されると、既存のセッションでもアクセスできない
+- [x] ログアウトするとセッションが削除され、/ にアクセスできなくなる
+- [x] ログアウトのお知らせが reset_session で消えない
+- [x] セッション cookie に httponly と SameSite=Lax が付く
+- [x] ログイン試行に rate_limit が掛かっている
+- [x] 壊れたパラメータ (配列・欠落) でログインすると 400 (500 にしない)
+- [x] /cable はマウントされていない (spec/requests/action_cable_spec.rb)
+
+User モデル (spec/models/user_spec.rb)
+- [x] User#admin? は role が admin のとき true
+- [x] 表示名は必須
+- [x] メールアドレスは形式を検査し、大文字小文字を無視して一意
+- [x] パスワードは最小長 (User::MINIMUM_PASSWORD_LENGTH) 以上
+- [x] User.active は無効化されていないユーザーだけを返す
+- [x] 管理者が 1 人のとき、その管理者は降格できない
+- [x] 管理者が 1 人のとき、その管理者は無効化できない
+- [x] 無効化済みの管理者は「有効な管理者」に数えない
+- [x] User.generate_password は読み間違えにくい文字種で十分な長さのパスワードを返す
+
+ユーザー管理 (spec/requests/admin/*_spec.rb)
+- [x] 一般ユーザーが /admin/users にアクセスすると 403
+- [x] 一般ユーザーは管理画面の全アクション (9 種) が 403 で、役割も状態も変わらない (表駆動)
+- [x] 未ログインでは管理画面の全アクションがログイン画面にリダイレクトされる (表駆動)
+- [x] 管理者はユーザーを作成でき、生成された初期パスワードが 1 度だけ表示される
+- [x] 初期パスワードは flash に載せず、一覧を開いても再表示されない
+- [x] 生成パスワードの画面は no-store で、Turbo のスナップショットにも残さない
+- [x] 追加フォームだけ Turbo を外し、編集フォームは通常どおり動く
+- [x] 実ブラウザでも初期パスワード / 新パスワードが表示される (js: true の system spec)
+- [x] 表示された初期パスワードでログインできる
+- [x] 編集では役割を変更でき、パスワードと無効化は変更できない (mass assignment の遮断)
+- [x] 管理者はユーザーを無効化・再有効化でき、無効化で対象の全セッションが失効する
+- [x] 管理者はパスワードを再設定でき、対象ユーザーの既存セッションが失効する
+- [x] 再設定した新しいパスワードも 1 度だけ表示される
+- [x] 自分自身へのパスワード再設定はアカウント設定に案内され、一覧にも出ない
+- [x] 自分自身の無効化ボタンは一覧に出ない
+
+アカウント設定 (spec/requests/accounts_spec.rb)
+- [x] 表示名とメールアドレスを変更できる
+- [x] 自分で役割や無効化を変更することはできない
+- [x] パスワード変更には現在のパスワードの確認が必要
+- [x] 新しいパスワードが空 / 未送信なら変更できない (無変更で成功扱いにしない)
+- [x] パスワードを変更するとこのデバイス以外のセッションが失効し、現在のセッションは残る
+- [x] パスワード変更の失敗ではセッションを失効させない
+- [x] パスワード変更に rate_limit が掛かっている
+- [x] ログイン中のセッションが一覧され、現在のセッションにだけ印が付く
+- [x] /account でセッションを個別に失効できる
+- [x] このデバイス以外をすべてログアウトできる
+
+rake タスク (spec/tasks/create_admin_spec.rb)
+- [x] tsumikura:create_admin タスクは冪等 (2 回実行してもユーザーが重複しない)
+- [x] ADMIN_EMAIL が無ければ中断する
+- [x] 自動生成したパスワードを標準出力に 1 度だけ表示する
+- [x] 既存の一般ユーザーは管理者に昇格する (パスワードは変えない)
+- [x] ADMIN_RESET_PASSWORD=1 でパスワードを再生成し、セッションを失効させる
+- [x] ADMIN_PASSWORD での再設定でもセッションを失効させる
+- [x] 無効化済みユーザーは再有効化せず、警告と代替手段を表示する
+- [x] バリデーションエラーはスタックトレースではなく中断で返す
+
+レイアウト (spec/system/*_spec.rb)
+- [x] 未ログインでトップにアクセスするとログイン画面が表示される
+- [x] ログイン後はダッシュボードと下部 5 タブが表示される
+- [x] 未ログインのログイン画面にはタブを出さない
+- [x] 未実装のタブ (品目・買い物・記録) はリンクにせず、準備中だと伝える
+- [x] 下部タブは safe-area の余白を持ち、viewport は viewport-fit=cover
+- [x] メニューからアカウント設定・ログアウトに行ける
+- [x] 一般ユーザーにはユーザー管理のリンクが見えない
 ```
 
 **動作確認**: 管理者を作り、家族ユーザーを追加して両方でログインできる。
@@ -233,6 +302,7 @@
 - **DB の日次バックアップをここで設定する** (後回しにしない)
 
 **動作確認**: `https://tsumikura.example.com/up` が 200、ログインできる、`dokku logs` にジョブ supervisor の起動ログが出る、バックアップが 1 回取れている。
+**`force_ssl` が効いていること** (http が https にリダイレクトされる、`/up` は除外される) と、**ログイン応答の `Set-Cookie: session_id` に `secure` が付くこと**を curl で確認する ([デプロイ](../ops/deployment.md#7-初回デプロイ手順))。
 
 ---
 
@@ -529,10 +599,13 @@
 | `db/seeds.rb` | 冪等な実装 | 4 |
 | `public/icon.png` / `icon.svg` | つみくらのアイコンに差し替え、192px 追加 | 12 |
 | `config/locales/en.yml` | 削除 (`ja.yml` に置換) | 1 |
+| `config/application.rb` | `config.action_cable.mount_path = nil` (Action Cable を使わないので `/cable` を生やさない) | 4 |
+
+`Gemfile` は `gem "json", "< 3"` で固定している。json 3 が `JSON.parse` のオプションをキーワード引数でしか受けず、ハッシュを位置引数で渡す ActiveSupport 8.1.3.1 と噛み合わないため (Phase 4 で 70 件の spec が落ちた)。**Rails を更新したらこの行を外して `bin/rspec` を流し、通るなら固定を解除する。**
 
 ## 付録 B: 削除するファイル
 
-`config/deploy.yml`、`.kamal/`、`bin/kamal`、`db/queue_schema.rb`、`db/cache_schema.rb`、`db/cable_schema.rb`、`test/` 一式、`app/controllers/passwords_controller.rb` (生成後)、`app/mailers/passwords_mailer.rb` (生成後)、`app/views/passwords_mailer/`。
+`config/deploy.yml`、`.kamal/`、`bin/kamal`、`db/queue_schema.rb`、`db/cache_schema.rb`、`db/cable_schema.rb`、`test/` 一式、`app/controllers/passwords_controller.rb` (生成後)、`app/mailers/passwords_mailer.rb` (生成後)、`app/views/passwords/` (生成後)、`app/views/passwords_mailer/`、`app/channels/` (生成後。Action Cable を使わないため)。
 Thruster を外すと決めた場合は `bin/thrust` も削除する (Phase 5)。
 
 ## 付録 C: 新規作成するファイル (設定系)

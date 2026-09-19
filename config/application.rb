@@ -26,6 +26,11 @@ module Tsumikura
     config.i18n.default_locale = :ja
     config.i18n.available_locales = [ :ja ]
 
+    # リアルタイム配信は行わないので Action Cable をマウントしない
+    # (app/channels を消しても ActionCable::Engine は /cable を生やし、
+    #  素の Connection::Base が未認証の WebSocket を受け付けてしまう)
+    config.action_cable.mount_path = nil
+
     # アプリ独自の設定 (config/tsumikura.yml)
     config.x.tsumikura = config_for(:tsumikura)
 

@@ -1,0 +1,11 @@
+<% if flash.any? %>
+  <div class="mx-auto w-full max-w-2xl px-4 pt-4">
+    <% if notice = flash[:notice] %>
+      <p id="notice" class="rounded-lg bg-green-50 px-4 py-3 text-sm font-medium text-green-800"><%= notice %></p>
+    <% end %>
+
+    <% if alert = flash[:alert] %>
+      <p id="alert" class="mt-2 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-800 first:mt-0"><%= alert %></p>
+    <% end %>
+  </div>
+<% end %>

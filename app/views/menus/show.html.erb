@@ -1,0 +1,22 @@
+<h1 class="text-2xl font-bold text-slate-900">メニュー</h1>
+
+<ul class="mt-6 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+  <li>
+    <%= link_to "アカウント設定", account_path,
+          class: "flex min-h-14 items-center px-4 py-3 text-slate-900 hover:bg-slate-50" %>
+  </li>
+
+  <% if Current.user.admin? %>
+    <li>
+      <%= link_to "ユーザー管理", admin_users_path,
+            class: "flex min-h-14 items-center px-4 py-3 text-slate-900 hover:bg-slate-50" %>
+    </li>
+  <% end %>
+
+  <li>
+    <%= button_to "ログアウト", session_path, method: :delete,
+          class: "flex min-h-14 w-full items-center px-4 py-3 text-left text-red-600 hover:bg-slate-50" %>
+  </li>
+</ul>
+
+<p class="mt-6 text-sm text-slate-500">マスタ管理・履歴は順次追加します。</p>
