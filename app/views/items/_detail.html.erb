@@ -29,6 +29,83 @@
         class: secondary_button_classes("mt-2") %>
 </section>
 
+<%#
+  要購入の予測 (docs/spec/03-screens.md 画面 3)。
+  ペースが分かっていれば reason によらず在庫切れ予測日を出す (仕様 7 節)。
+  分からないときは「何がたまれば予測が始まるか」を出して不安にさせない。
+%>
+<section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="予測">
+  <div class="flex items-start justify-between gap-2">
+    <h2 class="font-bold text-slate-900">要購入の予測</h2>
+    <%# 詳細では「購入不要」も文字で出す (判定が何も出ていないように見えないように) %>
+    <%= render "items/status_badges", forecast: @forecast, expiry: @expiry, show_ok: true %>
+  </div>
+
+  <% if @forecast.pace.known? %>
+    <%#
+      在庫が残っているのに予測日が today に丸められた状態 (仕様 9 節) は、
+      「在庫 5 なのに在庫切れ予測日が今日」と読めて誤解を生む。日付を主役にせず、
+      「ペースどおりなら使い切っている時期」であることと、棚卸の導線を出す。
+    %>
+    <% if forecast_overdue?(@forecast) %>
+      <p class="mt-3 font-bold text-slate-900">買っておくべき期限はすでに過ぎています。</p>
+      <p class="<%= hint_classes %>">
+        予測日は <%= l(@forecast.need_by_on) %> でした。ふだんのペースなら使い切っている時期です。
+        在庫数が合っているか確認してください (棚卸)。
+      </p>
+    <% else %>
+      <p class="mt-3 text-slate-900">
+        在庫切れ予測日:
+        <span class="font-bold"><%= l(@forecast.need_by_on) %></span>
+        (<%= forecast_days_left_text(@forecast) %>)
+      </p>
+      <p class="<%= hint_classes %>">「次に使いたいときに未使用在庫が無くなる日」です。</p>
+    <% end %>
+    <p class="mt-2 text-sm text-slate-700">
+      ペース: <%= forecast_pace_text(@forecast.pace, @item.unit) %>
+    </p>
+  <% else %>
+    <%# 何がたまれば予測が始まるかを出して不安にさせない %>
+    <p class="mt-3 text-sm text-slate-700"><%= forecast_unknown_text(@item, @forecast) %></p>
+  <% end %>
+
+  <% if (reason = forecast_reason_text(@item, @forecast)) %>
+    <p class="mt-2 text-sm text-slate-700"><%= reason %></p>
+  <% end %>
+
+  <% if @item.minimum_quantity.present? %>
+    <p class="<%= hint_classes %>">
+      最低在庫数 <%= @item.minimum_quantity %> <%= @item.unit %> ちょうどで「そろそろ購入」、
+      下回ると「購入推奨」になります。
+    </p>
+  <% end %>
+  <% if @expiry.expired_count.positive? %>
+    <p class="<%= hint_classes %>">
+      期限切れの <%= @expiry.expired_count %> ロットは、この判定の在庫に数えていません。
+    </p>
+  <% end %>
+</section>
+
+<%# 期限の状態 (docs/spec/02-forecast.md 12 節)。期限を入れたロットが 1 つも無ければ出さない %>
+<% if @expiry.nearest_expires_on %>
+  <section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="期限">
+    <div class="flex items-start justify-between gap-2">
+      <h2 class="font-bold text-slate-900">期限</h2>
+      <%= render "items/status_badges", expiry: @expiry %>
+    </div>
+    <p class="mt-3 text-sm text-slate-700">
+      最も近い期限: <span class="font-medium"><%= l(@expiry.nearest_expires_on) %></span>
+    </p>
+    <% if @expiry.expired_count.positive? %>
+      <p class="mt-1 text-sm text-red-700">期限切れのロット: <%= @expiry.expired_count %> 件</p>
+      <%= link_to "廃棄を記録", new_item_disposal_path(@item),
+            class: secondary_button_classes("mt-3 text-red-700") %>
+    <% elsif @expiry.expiring_soon_count.positive? %>
+      <p class="mt-1 text-sm text-slate-700">期限が近いロット: <%= @expiry.expiring_soon_count %> 件</p>
+    <% end %>
+  </section>
+<% end %>
+
 <%# ロットは期限が近い順 (FEFO)。使い切ったロットは畳んでおく (docs/spec/01-domain-model.md 判断 2) %>
 <section class="mt-4 rounded-xl border border-slate-200 bg-white p-4" aria-label="ロット">
   <h2 class="font-bold text-slate-900">ロット</h2>
@@ -42,7 +119,7 @@
   <% if @available_lots.any? %>
     <ul class="mt-3 divide-y divide-slate-200" aria-label="ロット一覧">
       <% @available_lots.each do |lot| %>
-        <%= render "lots/lot", lot: lot, item: @item %>
+        <%= render "lots/lot", lot: lot, item: @item, today: @today %>
       <% end %>
     </ul>
   <% else %>
@@ -57,7 +134,7 @@
       </summary>
       <ul class="divide-y divide-slate-200" aria-label="使い切ったロット一覧">
         <% @depleted_lots.each do |lot| %>
-          <%= render "lots/lot", lot: lot, item: @item %>
+          <%= render "lots/lot", lot: lot, item: @item, today: @today %>
         <% end %>
       </ul>
       <% if @depleted_lots_count > @depleted_lots.size %>

@@ -7,6 +7,10 @@ module Items
   # フラッシュのトースト (取り消しボタン付き) を出す。
   class QuickUsesController < ApplicationController
     include ItemDetails
+    include DashboardSummary
+
+    # 押した画面がダッシュボードだったことを示す値 (items/_use_button が hidden で送る)
+    DASHBOARD_ORIGIN = "dashboard".freeze
 
     def create
       @item = Item.find(params[:item_id])
@@ -21,12 +25,22 @@ module Items
         # 在庫・ロット・最近の記録をまとめて描き直す (Turbo は無い id を黙って無視するので、
         # 品目一覧からでも品目詳細からでも同じ応答で足りる)。
         # リダイレクトで済む JS 無しの経路では読まない
-        format.turbo_stream { load_item_detail(@item) }
+        format.turbo_stream { load_turbo_stream_screens }
         format.html { redirect_to_previous_screen }
       end
     end
 
     private
+      # 品目一覧・品目詳細は id さえ合えば差し替わるので常に描く。
+      # ダッシュボードから押されたときだけ、アラートカードと最近の記録も描き直す
+      # (件数はダッシュボード全体の集計なので、この品目だけでは出せない)
+      def load_turbo_stream_screens
+        today = Date.current
+        @from_dashboard = params[:from] == DASHBOARD_ORIGIN
+        load_dashboard_summary(today) if @from_dashboard
+        load_item_detail(@item, today: today)
+      end
+
       # 在庫記録が足りなくても記録は成功させる (設計原則 3)。
       # 黙って在庫を作ると気づけないので、補填したことは必ず伝える
       def toast_message

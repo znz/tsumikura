@@ -4,6 +4,10 @@ class ItemsController < ApplicationController
   # 一覧の状態フィルタ。既定はアーカイブ済みを隠した「有効な品目だけ」
   STATUSES = %w[ active archived all ].freeze
   DEFAULT_STATUS = "active".freeze
+  # ダッシュボードのアラートカードからの絞り込み (docs/spec/03-screens.md 画面 1)。
+  # 値は Forecast::Result#status / Expiry::Result#status と同じ名前にする
+  PURCHASE_STATUSES = %w[ urgent soon ].freeze
+  EXPIRY_STATUSES = %w[ expired expiring_soon ].freeze
 
   before_action :set_item, only: %i[ show edit update ]
   before_action :set_master_options, only: %i[ index new create edit update ]
@@ -15,8 +19,16 @@ class ItemsController < ApplicationController
     @category_id = filter_id(params[:category_id])
     @storage_location_id = filter_id(params[:storage_location_id])
     @status = STATUSES.include?(params[:status]) ? params[:status] : DEFAULT_STATUS
+    @purchase_status = PURCHASE_STATUSES.include?(params[:purchase]) ? params[:purchase] : nil
+    @expiry_status = EXPIRY_STATUSES.include?(params[:expiry]) ? params[:expiry] : nil
 
-    @items = filtered_items.includes(:category, :storage_location).ordered
+    # 「今日」は 1 リクエストにつき 1 回だけ取る (0 時をまたいで予測と期限がずれないように)
+    @today = Date.current
+    items = filtered_items.includes(:category, :storage_location).ordered.to_a
+    # 行ごとにステータスバッジを出すので、予測と期限はまとめて引く (品目が増えてもクエリは増えない)
+    @forecasts = Forecast::BatchForecaster.call(items, today: @today)
+    @expiries = Expiry::Evaluator.call(items, today: @today)
+    @items = filtered_by_alert(items)
   end
 
   # 在庫・ロット・用途・最近の記録は ItemDetails が読む
@@ -79,6 +91,15 @@ class ItemsController < ApplicationController
         end
 
       scope.search(@query).in_category(@category_id).in_storage_location(@storage_location_id)
+    end
+
+    # 要購入・期限での絞り込みは、まとめて引いた判定結果を使って Ruby 側で行う
+    # (SQL に予測の式を持ち込まないため。家庭用なので品目は数百件までで、ページネーションも無い)。
+    # アーカイブ済みの品目は BatchForecaster が判定しないので、この絞り込みには出てこない
+    def filtered_by_alert(items)
+      items = items.select { |item| @forecasts[item.id]&.status.to_s == @purchase_status } if @purchase_status
+      items = items.select { |item| @expiries[item.id]&.status.to_s == @expiry_status } if @expiry_status
+      items
     end
 
     # archived_at は Items::ArchivesController の担当。

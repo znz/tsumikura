@@ -17,4 +17,6 @@ end
 
 RSpec.configure do |config|
   config.include QueryCounter, type: :request
+  # 一括集計 (Forecast::BatchForecaster) が品目の数だけクエリを出さないことを見張る
+  config.include QueryCounter, type: :model
 end

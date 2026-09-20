@@ -8,14 +8,13 @@ RSpec.describe "トップページ", type: :system do
     expect(page).to have_field("メールアドレス")
   end
 
-  it "ログインすると「つみくら」とキャッチコピーのダッシュボードが表示される" do
+  it "ログインするとダッシュボードが表示される" do
     user = create(:user, name: "おかあさん")
 
     sign_in_as user
 
     expect(page).to have_current_path(root_path)
     expect(page).to have_css("h1", text: "つみくら")
-    expect(page).to have_text("家族でつなぐ、暮らしのストック")
     expect(page).to have_text("ようこそ、おかあさん。")
   end
 

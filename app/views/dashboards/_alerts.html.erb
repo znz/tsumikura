@@ -1,0 +1,15 @@
+<%#
+  アラートカード 4 種 (docs/spec/03-screens.md 画面 1)。unknown は要購入に数えない。
+  ダッシュボードからワンタップで使ったときは、この ul ごと Turbo Stream で差し替える
+  (タイルのバッジだけが変わってカードの件数が古いままにならないように)。
+%>
+<ul id="alerts" class="mt-4 grid grid-cols-2 gap-3" aria-label="アラート">
+  <%= render "dashboards/alert_card", title: "購入推奨", count: @alert_counts[:urgent],
+        path: items_path(purchase: "urgent"), tone: :danger %>
+  <%= render "dashboards/alert_card", title: "そろそろ購入", count: @alert_counts[:soon],
+        path: items_path(purchase: "soon"), tone: :warning %>
+  <%= render "dashboards/alert_card", title: "期限切れ", count: @alert_counts[:expired],
+        path: items_path(expiry: "expired"), tone: :danger %>
+  <%= render "dashboards/alert_card", title: "期限間近", count: @alert_counts[:expiring_soon],
+        path: items_path(expiry: "expiring_soon"), tone: :warning %>
+</ul>

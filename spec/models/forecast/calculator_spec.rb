@@ -16,6 +16,13 @@ RSpec.describe Forecast::Calculator do
       expect(result.reason).to eq :pace
     end
 
+    # 判定に使った在庫 (期限切れを除いた q) を Result に持たせる。
+    # 買い物リスト (Phase 11) や画面が items.current_quantity を使うと期限切れのぶんだけずれる
+    it "判定に使った在庫 (期限切れを除いた q) を Result に入れる" do
+      expect(described_class.call(snapshot(quantity: 3)).quantity).to eq 3
+      expect(described_class.call(snapshot(quantity: 0, minimum_quantity: 2)).quantity).to eq 0
+    end
+
     it "例 2: くん煙剤 — 在庫 0・u 1・ペース 1/182・anchor today なら need_by_on は today + 182 で ok" do
       result = described_class.call(
         snapshot(quantity: 0, unit_usage: 1, consumed: 4, observed_days: 728, event_count: 5, anchor_on: today)

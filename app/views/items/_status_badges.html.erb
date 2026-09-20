@@ -1,0 +1,30 @@
+<%# locals: (forecast: nil, expiry: nil, show_ok: false) %>
+<%#
+  ステータスバッジ (docs/spec/03-screens.md ステータスの見せ方)。
+  色だけに頼らず必ず文言を出す。一覧では「購入不要 (ok)」のバッジを出さず
+  (行が「—」と「購入不要」で埋まって肝心の赤・黄が埋もれるため)、
+  品目詳細だけは show_ok で出す (判定が何も出ていないように見えないように)。
+  データ不足 (unknown) は「—」に読み上げ用の説明を添える。
+  アーカイブ済みの品目は予測しない (forecast が nil) ので、何も出さない。
+%>
+<% purchase_badge = forecast if forecast && (show_ok || forecast.status != :ok) %>
+<% expiry_badge = expiry if expiry && !expiry.fresh? %>
+
+<% if purchase_badge || expiry_badge %>
+  <span class="flex flex-wrap items-center gap-1">
+    <% if purchase_badge %>
+      <span class="<%= forecast_badge_classes(purchase_badge.status) %>">
+        <%= forecast_status_label(purchase_badge.status) %>
+        <% if purchase_badge.status == :unknown %>
+          <span class="sr-only">予測できるデータがまだありません</span>
+        <% end %>
+      </span>
+    <% end %>
+
+    <% if expiry_badge %>
+      <span class="<%= expiry_badge_classes(expiry_badge.status) %>">
+        <%= expiry_status_label(expiry_badge.status) %>
+      </span>
+    <% end %>
+  </span>
+<% end %>

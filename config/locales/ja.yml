@@ -234,3 +234,19 @@ ja:
         damaged: 破損
         lost: 紛失
         other: その他
+
+  # 要購入判定 (docs/spec/02-forecast.md 1 節)。AR の enum ではないので enums: の外に置く。
+  # unknown は「—」で、読み上げ用の説明はビュー側 (items/_status_badges) で添える
+  forecast:
+    status:
+      urgent: 購入推奨
+      soon: そろそろ購入
+      ok: 購入不要
+      unknown: "—"
+
+  # 期限判定 (docs/spec/02-forecast.md 12 節)
+  expiry:
+    status:
+      expired: 期限切れ
+      expiring_soon: 期限間近
+      fresh: 期限に余裕あり

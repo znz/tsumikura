@@ -33,6 +33,21 @@
             options_for_select([ [ "有効な品目", "active" ], [ "アーカイブ済み", "archived" ], [ "すべて", "all" ] ], @status),
             {}, class: field_classes %>
     </div>
+
+    <%# ダッシュボードのアラートカードからの絞り込み。選び直せるようフォームにも出す %>
+    <div>
+      <%= form.label :purchase, "要購入", class: label_classes %>
+      <%= form.select :purchase,
+            options_for_select([ [ "購入推奨", "urgent" ], [ "そろそろ購入", "soon" ] ], @purchase_status),
+            { include_blank: "すべて" }, class: field_classes %>
+    </div>
+
+    <div>
+      <%= form.label :expiry, "期限", class: label_classes %>
+      <%= form.select :expiry,
+            options_for_select([ [ "期限切れ", "expired" ], [ "期限間近", "expiring_soon" ] ], @expiry_status),
+            { include_blank: "すべて" }, class: field_classes %>
+    </div>
   </div>
 
   <%= form.submit "絞り込む", class: primary_button_classes %>
@@ -45,6 +60,9 @@
 <% else %>
   <ul class="mt-6 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white"
       aria-label="品目一覧">
-    <%= render partial: "items/item", collection: @items %>
+    <%# 判定結果は行ごとに違うので、collection ではなく明示的に渡す %>
+    <% @items.each do |item| %>
+      <%= render "items/item", item: item, forecast: @forecasts[item.id], expiry: @expiries[item.id] %>
+    <% end %>
   </ul>
 <% end %>

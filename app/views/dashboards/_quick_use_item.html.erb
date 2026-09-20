@@ -1,0 +1,19 @@
+<%# locals: (item:, forecast: nil, expiry: nil) %>
+<%#
+  クイック使用のタイル (docs/spec/03-screens.md 画面 1)。
+  「使った」ボタンは品目一覧と同じ部分テンプレートを使い回すので、
+  用途を管理する品目だけは用途を選べるフォームへのリンクになる。
+  ワンタップ使用の Turbo Stream がこのタイルを差し替えるので id を付けておく
+  (一覧の行とは別の id にする。同じにすると一覧用の行がここに入ってしまう)。
+%>
+<li id="<%= dom_id(item, :quick_use) %>"
+    class="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3">
+  <%= link_to item_path(item), class: "min-w-0" do %>
+    <span class="block truncate font-medium text-slate-900"><%= item.name %></span>
+    <span class="block text-sm text-slate-500">
+      在庫 <%= item.current_quantity %> <%= item.unit %>
+    </span>
+  <% end %>
+  <%= render "items/status_badges", forecast: forecast, expiry: expiry %>
+  <%= render "items/use_button", item: item, from: "dashboard" %>
+</li>

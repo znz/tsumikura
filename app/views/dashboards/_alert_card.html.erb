@@ -1,0 +1,27 @@
+<%# locals: (title:, count:, path:, tone:) %>
+<%#
+  アラートカード (docs/spec/03-screens.md 画面 1)。タップで該当の品目一覧に飛ぶ。
+  色だけに頼らないよう、見出しの文言そのものが状態を表している。
+  0 件のカードはリンクにしない (押しても 0 件の一覧が出るだけで、読み上げでも邪魔になる)。
+%>
+<% tones = {
+     danger: "border-red-200 bg-red-50 text-red-800",
+     warning: "border-amber-200 bg-amber-50 text-amber-900",
+     quiet: "border-slate-200 bg-white text-slate-400"
+   } %>
+<% classes = class_names("flex min-h-24 w-full flex-col justify-between rounded-xl border p-4",
+     tones.fetch(count.positive? ? tone : :quiet)) %>
+
+<li>
+  <% if count.positive? %>
+    <%= link_to path, class: classes, aria: { label: "#{title} #{count} 件の品目を見る" } do %>
+      <span class="text-sm font-medium"><%= title %></span>
+      <span><span class="text-3xl font-bold"><%= count %></span> 件</span>
+    <% end %>
+  <% else %>
+    <span class="<%= classes %>">
+      <span class="text-sm font-medium"><%= title %></span>
+      <span><span class="text-3xl font-bold">0</span> 件</span>
+    </span>
+  <% end %>
+</li>

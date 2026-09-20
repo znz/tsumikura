@@ -46,6 +46,9 @@ class Lot < ApplicationRecord
   scope :available, -> { where("remaining_quantity > 0") }
   scope :depleted, -> { where(remaining_quantity: 0) }
   scope :expired, ->(today = Date.current) { where(expires_on: ...today) }
+  # 期限切れ**ではない**ロット (期限なしを含む)。要購入判定の在庫 q はこれだけを数える
+  # (docs/spec/02-forecast.md 2 節)。where.not(expired) では期限なしが NULL で落ちてしまう
+  scope :unexpired, ->(today = Date.current) { where(expires_on: nil).or(where(expires_on: today..)) }
   scope :priced, -> { where.not(price_yen: nil) }
   # 「最近」は購入日の新しい順。同じ日なら後から記録したものを新しいとみなす
   scope :recent_first, -> { order(acquired_on: :desc, id: :desc) }

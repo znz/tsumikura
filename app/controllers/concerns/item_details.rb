@@ -11,8 +11,16 @@ module ItemDetails
   RECENT_RECORDS_LIMIT = 10
 
   private
-    def load_item_detail(item)
+    def load_item_detail(item, today: Date.current)
       @item = item
+      # 「今日」は 1 リクエストにつき 1 回だけ取る。予測・期限・FEFO の並び・ロットの
+      # 期限切れ表示がそれぞれ Date.current を呼ぶと、0 時をまたいだ瞬間に
+      # 「在庫 q からは除いたのにバッジは期限切れでない」といったずれが出る
+      @today = today
+      # 予測 (在庫切れ予測日・ペース・判定理由) と期限のステータス。
+      # ワンタップ使用の応答でも引くので、一覧の行のバッジが記録の直後に更新される
+      @forecast = Forecast::ItemForecaster.call(@item, today: @today)
+      @expiry = Expiry::Evaluator.for(@item, today: @today)
       load_lots
       load_purposes
       @recent_records = recent_records
@@ -20,7 +28,7 @@ module ItemDetails
 
     # ロット一覧は期限が近い順 (FEFO)。store を includes しないと行ごとに店舗を引いてしまう
     def load_lots
-      @available_lots = @item.lots.available.includes(:store).fefo.to_a
+      @available_lots = @item.lots.available.includes(:store).fefo(@today).to_a
       @depleted_lots_count = @item.lots.depleted.count
       @depleted_lots = @item.lots.depleted.includes(:store).recent_first.limit(DEPLETED_LOTS_LIMIT).to_a
       # 「最近の単価」は価格のある直近のロットだけで計算する (docs/spec/01-domain-model.md 判断 6)

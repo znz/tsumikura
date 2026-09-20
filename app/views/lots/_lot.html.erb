@@ -1,4 +1,12 @@
-<%# locals: (lot:, item:) %>
+<%# locals: (lot:, item:, today: nil) %>
+<%#
+  ロット 1 行。期限は「期限を管理する」品目でなくても、入っていれば必ず出す。
+  tracks_expiry は入力 UI の出し分けだけで、期限切れの判定 (在庫 q からの除外・バッジ) は
+  expires_on の有無で行う (docs/spec/02-forecast.md 12 節)。出さないと、あとから
+  「期限を管理する」を外した品目で、見えない期限のせいで期限切れ扱いになる。
+  today はコントローラが 1 リクエストにつき 1 回だけ取ったもの (0 時をまたいでずれないように)。
+%>
+<% today ||= Date.current %>
 <li class="flex items-start justify-between gap-3 py-3">
   <div class="min-w-0">
     <p class="font-medium text-slate-900">
@@ -11,9 +19,9 @@
       <% end %>
     </p>
     <p class="mt-1 text-sm text-slate-500">
-      <% if item.tracks_expiry? %>
+      <% if item.tracks_expiry? || lot.expires_on.present? %>
         期限: <%= lot.expires_on ? l(lot.expires_on) : "なし" %>
-        <% if lot.expired? %>
+        <% if lot.expired?(today) %>
           <span class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">期限切れ</span>
         <% end %>
         ・
@@ -32,7 +40,7 @@
   </div>
   <div class="flex shrink-0 items-center gap-2">
     <%# 期限切れロットからは廃棄に進めるようにする (docs/spec/02-forecast.md 12 節) %>
-    <% if lot.expired? && lot.remaining_quantity.positive? %>
+    <% if lot.expired?(today) && lot.remaining_quantity.positive? %>
       <%= link_to "廃棄", new_item_disposal_path(item, lot_id: lot.id),
             aria: { label: "このロットを廃棄" }, class: secondary_button_classes("text-red-700") %>
     <% end %>

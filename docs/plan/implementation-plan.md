@@ -846,56 +846,117 @@ Phase 7 / 8 からの申し送り (docs/spec/01-domain-model.md 5 節)
 
 **作業**
 
-- `Forecast::SnapshotBuilder` / `ItemForecaster` / `BatchForecaster` (一覧用の一括集計クエリ)
-- `Expiry::Evaluator` (期限ステータス)
-- `DashboardsController` + ダッシュボード UI
-- 品目一覧・詳細へのステータスバッジ組み込み
+- `Forecast::Aggregator` (AR クエリの一本化) + `SnapshotBuilder` / `ItemForecaster` / `BatchForecaster`
+- `Expiry::Status` (PORO) / `Expiry::Result` / `Expiry::Evaluator` (期限ステータス)
+- `DashboardsController` + ダッシュボード UI (アラートカード / クイック使用 / 最近の記録)
+- 品目一覧・詳細へのステータスバッジ組み込み、一覧の `purchase` / `expiry` 絞り込み
 - 品目編集の予測設定 (`estimation_mode` / `manual_interval_days` / 閾値 / 最低在庫数 / 期限警告日数) は
   Phase 6 で作成済み。ここでは予測結果 (在庫切れ予測日・ペース・判定理由) の表示だけを足す
 
 **TDD TODO**
 
 ```
-- [ ] SnapshotBuilder は消費の定義に StockMovement.consumption スコープを使う
+SnapshotBuilder (spec/models/forecast/snapshot_builder_spec.rb)
+- [x] SnapshotBuilder は消費の定義に StockMovement.consumption スコープを使う
       (「使用と負の調整」の定義を Stock::Recalculator と 1 か所にそろえる)
-- [ ] u (usage_records.quantity の中央値) と消費量 (stock_movements) は別のテーブルから数える。
+- [x] u (usage_records.quantity の中央値) と消費量 (stock_movements) は別のテーブルから数える。
       一致は rake stock:verify の「使用の数量」の検査が前提 (Phase 8 からの申し送り)
-- [ ] 在庫不足を補填した使用も消費に数える (補填の入庫は正の adjustment なので分子に入らない)
-- [ ] SnapshotBuilder は usage と負の adjustment を消費量に含める
-- [ ] SnapshotBuilder は disposal を消費量に含めない
-- [ ] SnapshotBuilder は purchase と正の adjustment を消費量に含めない
-- [ ] 同じ日の複数の消費記録は消費イベント 1 件と数える (FEFO で 2 行に分割された使用も 1 件)
-- [ ] SnapshotBuilder の窓は直近 5 件目の消費イベント日まで伸びる
-- [ ] SnapshotBuilder の窓は tracking_started_on より前には遡らない
-- [ ] SnapshotBuilder の窓は today - 730 日より前には遡らない
-- [ ] 窓の開始日当日の消費は consumed に含まれないが、event_count には含まれる
-- [ ] 窓の開始日より古い使用記録は consumed にも event_count にも含まれない
-- [ ] 182 日おきに 5 回使った品目 (最後が today) は consumed 4・event_count 5・observed_days 728 になる (検算例 2)
-- [ ] 5 日おきに使っている品目 (最後が 2 日前) は consumed 18・observed_days 90 になる (検算例 1)
-- [ ] SnapshotBuilder の quantity は期限切れロットの残数を除く
-- [ ] 全ロットが期限切れなら quantity は 0 になる
-- [ ] SnapshotBuilder の unit_usage は窓内の使用記録の数量の中央値 (無ければ 1)
-- [ ] SnapshotBuilder の anchor_on は最後の消費イベント日 (棚卸のマイナス差分を含む)
-- [ ] 消費イベントが無い品目の anchor_on は tracking_started_on
+- [x] 在庫不足を補填した使用も消費に数える (補填の入庫は正の adjustment なので分子に入らない)
+- [x] SnapshotBuilder は usage と負の adjustment を消費量に含める
+- [x] SnapshotBuilder は disposal を消費量に含めない (アンカーも動かさない)
+- [x] SnapshotBuilder は purchase と正の adjustment を消費量に含めない
+- [x] 同じ日の複数の消費記録は消費イベント 1 件と数える (FEFO で 2 行に分割された使用も 1 件)
+- [x] SnapshotBuilder の窓は直近 5 件目の消費イベント日まで伸びる
+- [x] SnapshotBuilder の窓は tracking_started_on より前には遡らない
+- [x] SnapshotBuilder の窓は today - 730 日より前には遡らない
+- [x] 窓の開始日当日の消費は consumed に含まれないが、event_count には含まれる
+- [x] 窓の開始日より古い使用記録は consumed にも event_count にも含まれない
+- [x] 窓の開始が消費イベント日なら窓の終わりは anchor、下限で決まったなら today
+- [x] SnapshotBuilder の quantity は期限切れロットの残数を除く (今日が期限のロットは数える)
+- [x] 全ロットが期限切れなら quantity は 0 になる
+- [x] SnapshotBuilder の unit_usage は窓内の使用記録の数量の中央値 (無ければ 1・四捨五入・最低 1)
+- [x] SnapshotBuilder の anchor_on は最後の消費イベント日 (棚卸のマイナス差分を含む)
+- [x] 消費イベントが無い品目の anchor_on は tracking_started_on
+- [x] 在庫イベントが 1 件も無ければ anchor_on は nil で、窓は today - 90 日のまま (例外にしない)
+- [x] キャッシュ列だけ欠けていても (台帳に消費あり) 例外にならず unknown になる
+      (窓を消費イベント日まで伸ばすと窓の終わり = anchor が nil になり、一覧が丸ごと 500 になる)
+- [x] last_consumed_on だけ欠けていても例外にならず unknown になる (観測 0 日)
+- [x] 同じ日の複数記録は 5 件目を数えるときも 1 件 (DENSE_RANK。ROW_NUMBER / RANK だと窓が縮む)
+- [x] u は中央値 2.5 を 3 に丸める (偶数丸めにしない) / 件数が奇数なら中央の値をそのまま使う
+- [x] today はビルダーの引数で差し替えられる (spec で日付を固定するため)
+
+検算例を台帳から再現する (spec/models/forecast/item_forecaster_spec.rb)
+- [x] 5 日おきに使っている品目 (最後が 2 日前) は consumed 18・observed_days 90 になる (検算例 1)
+      → need_by_on は today + 18 で soon
+- [x] 182 日おきに 5 回使った品目 (最後が today) は consumed 4・event_count 5・observed_days 728 (検算例 2)
+      → 在庫 0 でも need_by_on は today + 182 で ok
+- [x] 検算例 2 の品目は 162 日たつと soon、176 日たつと urgent になる (5 件目が上限 730 日の外へ出る)
+- [x] 1 回に 2 本使う品目 (在庫 5 本) は u = 2・need_by_on は anchor + 60 (検算例 3)
+- [x] Forecast::Result は判定に使った在庫 q (期限切れを除く) を持つ
+      (買い物リスト (Phase 11) が items.current_quantity を使うとずれるため)
+
+BatchForecaster (spec/models/forecast/batch_forecaster_spec.rb)
+- [x] BatchForecaster の結果は、各品目を ItemForecaster で個別に判定した結果と一致する
+      (履歴なし / 1 件 / 頻繁 / 季節品 / 用途つき / 棚卸マイナス / 補填 / 廃棄 / 期限切れ /
+       manual / none / 最低在庫 / 閾値上書き を混ぜる)
+- [x] アーカイブ済みの品目は BatchForecaster の対象にもダッシュボードにも出ない
+- [x] Expiry::Evaluator.call もアーカイブ済みを落とす (BatchForecaster と対称。
+      1 品目版 Evaluator.for は品目詳細用なので落とさない)
+- [x] BatchForecaster は N 品目に対してクエリを定数回 (4 本) しか発行しない
+- [x] 品目ごとの閾値の上書きが効く (残り 30 日は既定なら ok、soon 60 日なら soon)
+
+期限判定 (spec/models/expiry/status_spec.rb は DB なし / evaluator_spec.rb は AR)
+- [x] expires_on < today なら expired、today なら expiring_soon (Lot#expired? と同じ基準)
+- [x] 警告日数ちょうどは expiring_soon、1 日先は fresh。期限 nil は fresh
+- [x] 品目のステータスは保有ロットの最悪値 (残数 1 以上のロットだけ)
+- [x] 品目ごとの expiry_warning_days が効く
+- [x] 最も近い期限と期限切れロットの数を返す
+- [x] 品目が増えてもクエリは 1 本のまま
 
 Phase 9 からの申し送り (docs/spec/01-domain-model.md 5 節)
-- [ ] 棚卸のマイナス差分は counted_on の 1 日に全量が消費として計上される
+- [x] 棚卸のマイナス差分は counted_on の 1 日に全量が消費として計上される
       (3 か月ぶんの減りが 1 日に乗る。窓は 90 日以上あるので合計は歪まないが、
       その日の前後だけを見ると消費が極端に見える)。u (1 回あたりの使用数) には入らない
-- [ ] 1 回の棚卸で movement が複数行に分かれても、消費イベントは棚卸日の 1 件
-- [ ] 過去日の棚卸を確定すると tracking_started_on が前に動くことがある (窓の下限が伸びる)
-- [ ] 棚卸のプラス差分で作る調整ロットは期限 NULL なので、期限判定には出ないが在庫 q には入る
-- [ ] 品目ごとの最終棚卸日は Item#last_counted_on を使い回す
-      (確定済み・実数を入れた明細だけ。「直近の棚卸日より前です」の警告と同じ定義)
-- [ ] SnapshotBuilder は estimation_mode を Symbol (:auto / :manual / :none) で Snapshot に渡す
+- [x] 1 回の棚卸で movement が複数行に分かれても、消費イベントは棚卸日の 1 件
+- [x] 過去日の棚卸を確定すると tracking_started_on が前に動くことがある (窓の下限が伸びる)
+- [x] 棚卸のプラス差分で作る調整ロットは期限 NULL なので、期限判定には出ないが在庫 q には入る
+- [x] 品目ごとの最終棚卸日は Item#last_counted_on を使い回す
+      (Phase 9 の「直近の棚卸日より前です」の警告がそのまま正。予測側で新しく使う場面は無かった)
+- [x] SnapshotBuilder は estimation_mode を Symbol (:auto / :manual / :none) で Snapshot に渡す
       (Forecast::Pace は文字列や整数を ArgumentError にする)
-- [ ] BatchForecaster の結果は、各品目を ItemForecaster で個別に判定した結果と一致する
-- [ ] アーカイブ済みの品目は BatchForecaster の対象にもダッシュボードにも出ない
-- [ ] BatchForecaster は N 品目に対してクエリを定数回しか発行しない
-- [ ] ダッシュボードに購入推奨の品目数が表示される
-- [ ] ダッシュボードに期限切れロットを持つ品目が表示される
-- [ ] unknown の品目はダッシュボードの要購入に出ない
-- [ ] 品目詳細に在庫切れ予測日と残り日数が表示される
+
+ダッシュボード (spec/requests/dashboards_spec.rb)
+- [x] ダッシュボードに購入推奨・そろそろ購入の品目数が表示される
+- [x] ダッシュボードに期限切れ・期限間近の品目数が表示される
+- [x] unknown の品目はダッシュボードの要購入に出ない
+- [x] アラートカードはリンクとして読め、品目一覧の絞り込みに飛ぶ。0 件のカードはリンクにしない
+- [x] クイック使用にお気に入りと最近使った品目が出る (用途つきはフォームへ・アーカイブ済みは出さない)
+- [x] 最近の記録 5 件が全品目横断で出る (アーカイブ済みの品目の記録は出さない)
+- [x] 品目と記録が増えてもダッシュボードのクエリ数は増えない
+
+品目一覧・詳細 (spec/requests/items_spec.rb / items/quick_uses_spec.rb)
+- [x] 一覧にステータスバッジが出る (購入推奨 / 期限切れ。ok はバッジなし・unknown は「—」)
+- [x] バッジは色だけに頼らない (文言と読み上げ用の説明つき)
+- [x] アーカイブ済みの品目にはバッジを出さない
+- [x] purchase / expiry で一覧を絞り込める。知らない値や壊れた値は無視して既定に倒す
+- [x] 品目詳細に在庫切れ予測日と残り日数とペース (「約 6.0 ロール / 月」/「約 182 日に 1 個」) が出る
+- [x] 品目詳細に判定理由 (:pace / :minimum / :out_of_stock) と最低在庫数との関係が出る
+      (「ちょうどでそろそろ購入、下回ると購入推奨」まで書く)
+- [x] 購入不要のときも詳細には判定を文字で出す (一覧では ok のバッジを出さない)
+- [x] 在庫が残ったまま予測日が過ぎているときは、日付を主役にせず棚卸を促す
+- [x] アーカイブ済みの品目には期限のバッジも出さない / 絞り込みにも出てこない
+- [x] 期限を管理しない品目でも、期限が入っていればロット一覧と編集フォームに期限を出す
+- [x] ダッシュボードから押したワンタップ使用は、アラートカードと最近の記録も描き直す
+      (品目一覧から押したときは行だけ)
+- [x] unknown のときは理由に応じた文言が出る (観測日数不足 / イベント不足 / none / 在庫未登録)
+- [x] 品目詳細に最も近い期限と期限切れロットの数が出て、廃棄に進める
+- [x] ワンタップ使用の Turbo Stream で、更新された行のバッジと詳細の予測も描き直される
+
+画面 (spec/system/dashboard_spec.rb)
+- [x] アラートカードから該当する品目の一覧に飛べる
+- [x] クイック使用のタイルから JS 無しで記録できる
+- [x] 最近の記録から品目詳細に行ける
+- [x] 品目詳細に在庫切れ予測日とペースが出る
 ```
 
 **動作確認**: 実データ (数品目) で予測日が [検算例](../spec/02-forecast.md) と一致する。
@@ -925,6 +986,15 @@ Phase 9 からの申し送り (docs/spec/01-domain-model.md 5 節)
 - [ ] チェック済み行から購入を登録すると Lot が作られ、行が消える
 - [ ] 購入登録後は在庫が増え、ステータスが ok に戻る
 - [ ] アーカイブ済みの品目は並ばない
+
+Phase 10 からの申し送り (docs/spec/02-forecast.md 14 節)
+- [ ] 要購入の導出は Forecast::BatchForecaster.call(Item.active) の status (:urgent / :soon) を使う
+      (一覧の ?purchase=urgent と同じ導出。SQL で書き直さない)
+- [ ] 「在庫 n」や推奨数量は Forecast::Result#quantity (期限切れを除いた q) を使う
+      (items.current_quantity は期限切れを含むので判定した在庫とずれる)
+- [ ] today は 1 リクエストにつき 1 回だけ取って BatchForecaster / Expiry::Evaluator に渡す
+- [ ] 品目を一括登録した直後は、在庫イベントが無い auto の品目が :out_of_stock で urgent になり
+      リストが埋まる。仕様どおりだが、緩和するなら tracking_started_on で判別する
 ```
 
 **動作確認**: 買い物リストからまとめ購入を登録し、在庫が増えてリストから消える。
@@ -956,6 +1026,14 @@ Phase 9 からの申し送り (docs/spec/01-domain-model.md 5 節)
 - [ ] urgent -> ok -> urgent と戻ると再度送られる
 - [ ] notify_purchases が false のユーザーには要購入の通知を送らない
 - [ ] 送信後に item_alert_states が現在値で更新される
+
+Phase 10 からの申し送り (docs/spec/02-forecast.md 14 節)
+- [ ] 悪化の判定は status だけを比べる (days_left は毎日動くので差分で通知すると毎日鳴る)。
+      向きは Forecast::Calculator::RANK / Expiry::Status::RANK
+- [ ] status は Symbol なので item_alert_states には文字列で保存して文字列で比べる
+- [ ] today はジョブで 1 回だけ取って BatchForecaster / Expiry::Evaluator に渡す
+      (today に渡せるのは Date.current 以降だけ)
+- [ ] Expiry::Evaluator.call もアーカイブ済みを落とすので、ジョブ側で除外しなくてよい
 ```
 
 **動作確認**: 本番にデプロイし、スマホをホーム画面に追加してテスト送信が届く。

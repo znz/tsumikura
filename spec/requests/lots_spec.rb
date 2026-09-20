@@ -291,6 +291,26 @@ RSpec.describe "購入の記録", type: :request do
       expect(response.parsed_body.at("input[name='lot[initial_quantity]']")[:value]).to eq "12"
     end
 
+    # 期限の判定は expires_on の有無で行う (docs/spec/02-forecast.md 12 節)。
+    # 「期限を管理する」を外したあとも欄を出さないと、見えない期限で期限切れ扱いのまま直せない
+    it "期限を管理しない品目でも、期限が入っているロットには期限日の入力欄を出す" do
+      lot = create(:lot, item: item, initial_quantity: 3, expires_on: Date.current + 10)
+
+      get edit_lot_path(lot)
+
+      expect(item).not_to be_tracks_expiry
+      expect(response.parsed_body.at("input[name='lot[expires_on]']")).to be_present
+      expect(response.body).to include "不要なら空にしてください"
+    end
+
+    it "期限を管理せず、期限も入っていないロットには期限日の入力欄を出さない" do
+      lot = create(:lot, item: item, initial_quantity: 3)
+
+      get edit_lot_path(lot)
+
+      expect(response.parsed_body.at("input[name='lot[expires_on]']")).to be_nil
+    end
+
     it "種別は編集フォームに出さない" do
       lot = create(:lot, item: item)
 

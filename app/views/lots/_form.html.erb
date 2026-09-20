@@ -71,11 +71,22 @@
     <%= render "stock_take_hint", item: item %>
   </div>
 
-  <% if item.tracks_expiry? %>
+  <%#
+    期限の入力欄は「期限を管理する」品目に出す。ただし**すでに期限が入っているロット**では
+    設定を外したあとでも出す (docs/spec/02-forecast.md 12 節: 判定は expires_on の有無で行うので、
+    欄が消えると見えない期限で期限切れ扱いになったまま直せなくなる)。
+  %>
+  <% if item.tracks_expiry? || lot.expires_on.present? %>
     <div>
       <%= form.label :expires_on, class: label_classes %>
       <%= form.date_field :expires_on, class: field_classes %>
       <p class="<%= hint_classes %>">分からなければ空のままで構いません。</p>
+      <% unless item.tracks_expiry? %>
+        <p class="<%= hint_classes %>">
+          この品目は「期限を管理する」が外れていますが、入っている期限は予測と期限切れの判定に使われます。
+          不要なら空にしてください。
+        </p>
+      <% end %>
     </div>
   <% end %>
 

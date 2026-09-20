@@ -1,8 +1,10 @@
-<%# locals: (item:) %>
+<%# locals: (item:, from: nil) %>
 <%#
   「使った」ボタン (docs/spec/03-screens.md 画面 2 / 4b)。
   用途を管理する品目はワンタップだと用途が付かないので、用途を選べるフォームへ誘導する。
   それ以外はワンタップで即記録し、取り消せるトーストを出す。
+  from は「どの画面から押したか」。ダッシュボードからのときだけ、Turbo Stream の応答に
+  アラートカードと最近の記録も足す (タイルのバッジだけ変わって件数が古いままにならないように)。
 %>
 <%# アーカイブ済みの品目は日々使う導線から外す (記録自体はサーバが受け付ける) %>
 <% if item.archived? %>
@@ -11,5 +13,6 @@
         aria: { label: "「#{item.name}」を使った" }, class: use_button_classes %>
 <% else %>
   <%= button_to "使った", item_quick_use_path(item), form: { class: "shrink-0" },
+        params: (from.present? ? { from: from } : {}),
         aria: { label: "「#{item.name}」を使った" }, class: use_button_classes %>
 <% end %>

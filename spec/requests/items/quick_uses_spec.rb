@@ -89,6 +89,29 @@ RSpec.describe "ワンタップ使用", type: :request do
       expect(response.body).to include "data-turbo-temporary"
     end
 
+    # 行にはステータスバッジが入っているので、記録した直後に判定も更新される
+    it "更新後の行に要購入のステータスバッジが入っている" do
+      item.update!(minimum_quantity: 5)
+
+      quick_use(headers: turbo_headers)
+
+      row = Nokogiri::HTML4::DocumentFragment.parse(response.body)
+        .at("li##{ActionView::RecordIdentifier.dom_id(item)}")
+      expect(row.text).to include "購入推奨"
+    end
+
+    it "ダッシュボードのクイック使用のタイルも差し替える" do
+      quick_use(headers: turbo_headers)
+
+      expect(response.body).to include %(target="quick_use_item_#{item.id}")
+    end
+
+    it "品目詳細の予測セクションも描き直す" do
+      quick_use(headers: turbo_headers)
+
+      expect(response.body).to include "要購入の予測"
+    end
+
     it "在庫が足りなければ調整した旨をトーストに出す" do
       item.lots.destroy_all
       Stock::Recalculator.call(item)

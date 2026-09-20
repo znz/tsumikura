@@ -23,7 +23,9 @@ module Forecast
         pace: pace,
         need_by_on: need_by_on,
         days_left: days_left,
-        reason: judgements.key(status) || :no_data
+        reason: judgements.key(status) || :no_data,
+        # 判定に使った在庫 (期限切れを除く)。画面と買い物リストが同じ数を出せるように持たせる
+        quantity: snapshot.quantity
       )
     end
 

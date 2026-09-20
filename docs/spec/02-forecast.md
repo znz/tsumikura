@@ -291,16 +291,54 @@ app/models/forecast/
                        #             :manual_interval_days,
                        #             :thresholds,
                        #             :today)
-  result.rb            # Data.define(:status, :pace, :need_by_on, :days_left, :reason)
+  result.rb            # Data.define(:status, :pace, :need_by_on, :days_left, :reason, :quantity)
+                       #   quantity: 判定に使った在庫 q (期限切れロットを除く)。
+                       #   items.current_quantity とは違うので、画面と買い物リストはこちらを使う
   window.rb            # 窓の計算 (純粋関数):
                        #   Window.for(today:, nth_event_on:, last_event_on:, tracking_started_on:, thresholds:)
                        #   -> start_on / end_on / observed_days を持つ値オブジェクト
   calculator.rb        # AR 非依存の純粋関数: Snapshot -> Result
-  snapshot_builder.rb  # AR クエリ担当: Item -> Snapshot (Window を使う)
-  item_forecaster.rb   # Item -> Result (Builder + Calculator の合成 + リクエスト内メモ化)
+  aggregator.rb        # AR クエリ担当: Item の配列 -> Hash{item_id => Snapshot}
+                       #   集計の式はここ 1 か所だけに置く (Window を使う)
+  snapshot_builder.rb  # Item -> Snapshot (Aggregator の 1 品目版)
+  item_forecaster.rb   # Item -> Result (SnapshotBuilder + Calculator の合成)
   batch_forecaster.rb  # Item の Relation -> Hash{item_id => Result}
                        #   一覧画面用。集計を定数回のクエリでまとめて取る
 ```
+
+`SnapshotBuilder` と `BatchForecaster` で式が二重にならないよう、**両方とも `Aggregator` に委譲する**
+(1 品目版は「配列の要素が 1 つ」にすぎない)。「`BatchForecaster` の結果 == 各品目を `ItemForecaster` で
+個別に判定した結果」を spec で固定してあるので、SQL を書き換えるとまずそこが落ちる。
+
+`Aggregator` が発行するクエリは品目の数によらず **4 本**:
+
+1. 品目ごとの「直近 `window_events` 件目の消費イベント日」
+   (`DENSE_RANK() OVER (PARTITION BY item_id ORDER BY occurred_on DESC)` で順位を付け、
+   `rank <= 5` の最小値を取る。`DENSE_RANK` なので同じ日の複数行はまとめて 1 件と数えられる)
+2. 期限切れを除いた在庫 `q` (`Lot.available.unexpired(today)` の `GROUP BY item_id`)
+3. 窓の中の `consumed` と `event_count`
+   (品目ごとに窓が違うので、`(item_id, window_start)` の `VALUES` を組み立てて JOIN する。
+   JOIN は閉区間 `[window_start, today]` で取り、`consumed` だけ `CASE` で開始日当日を外す)
+4. 窓の中の `u` (`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY usage_records.quantity)`)
+
+窓の開始日は 1 の結果から Ruby (`Forecast::Window`) で決めるので、1〜2 と 3〜4 の 2 段階になる。
+どちらの段でも品目の数だけクエリは増えない。`VALUES` に渡すのは id と日付だけだが、
+文字列連結ではなく `sanitize_sql_array` で束縛する。
+
+- `anchor` は `items.last_consumed_on` (無ければ `tracking_started_on`) というキャッシュ列から取る。
+  キャッシュがずれて `anchor` だけ欠けたときは、窓を消費イベント日まで伸ばさない
+  (伸ばすと窓の終わり = `anchor` が `nil` になる)。判定は 4 節のとおり `unknown` になる。
+- **アーカイブ済みの品目は `BatchForecaster` の結果に入らない** (9 節: 一覧・ダッシュボード・
+  買い物リストから除外)。呼び出し側は `forecasts[item.id]` が `nil` になりうる前提で書き、
+  バッジを出さない。`ItemForecaster` は品目詳細から呼ぶのでアーカイブ済みでも判定する。
+- 判定結果はコントローラで 1 回引いてビューに locals で渡す (リクエスト内のメモ化は置かない)。
+  一覧の行は `BatchForecaster` の結果、品目詳細とワンタップ使用の応答は `ItemForecaster` の結果を使う。
+- **`today` は 1 リクエスト (1 ジョブ) につき 1 回だけ取り**、予測・期限・FEFO の並び・
+  ロットの期限切れ表示にすべて同じ値を渡す。別々に `Date.current` を呼ぶと、0 時をまたいだ瞬間に
+  「在庫 `q` からは除いたのにバッジは期限切れでない」といったずれが出る。
+- `today` に渡せるのは **`Date.current` 以降**だけ (日数を進めたシミュレーション)。
+  過去日を渡すと、台帳の集計は打ち切られるのにキャッシュ列の `anchor` は打ち切れず、
+  「未来の消費イベント」が起点になってしまう。
 
 `thresholds` / `pace` / `snapshot` / `result` / `window` / `calculator` の spec は DB を一切触らない (`rails_helper` ではなく `spec_helper` だけで動く)。ここが最も仕様が濃く、最も頻繁にテストする層なので、実行速度を最優先する。
 
@@ -318,9 +356,33 @@ app/models/forecast/
 | `fresh` | それ以外 (期限 nil を含む) |
 
 - 期限日の当日はまだ期限切れではない (`expires_on < today` で初めて `expired`)。
+  `Lot#expired?` / `Stock::Allocator` の引き当て順と同じ基準にそろえる。
 - 品目のステータスは、保有ロットの最悪値を採用する。
 - `expired` のロットの残数は、要購入判定の `q` から除く (2 節)。
 - 期限切れロットは品目詳細で強調表示し、そこから廃棄を記録できるようにする。
+
+```
+app/models/expiry/
+  status.rb     # ロット 1 件の判定 (純粋関数)。Status.for(expires_on:, today:, warning_days:)
+                #   と Status.worst(statuses) だけ。DB にも Rails にも依存しない
+  result.rb     # Data.define(:status, :expired_count, :expiring_soon_count, :nearest_expires_on)
+  evaluator.rb  # AR クエリ担当: Item の配列 -> Hash{item_id => Result}
+                #   Evaluator.for(item) は 1 品目版。クエリは品目の数によらず 1 本
+```
+
+- 予測と同じく、判定そのもの (`Status`) は `spec_helper` だけで回せる PORO にする。
+- `Evaluator` は `Lot.available` で残数 1 以上のロットだけを引き、期限 `NULL` の行は端から取らない
+  (必ず `fresh` なので、判定にも「最も近い期限」にも影響しない)。
+- 警告日数は `Item#effective_expiry_warning_days` (品目の上書き → 既定 30)。
+- `nearest_expires_on` は在庫のあるロットの中でいちばん早い期限。過去 (期限切れ) でも隠さない。
+- **`items.tracks_expiry` は入力 UI の出し分けだけに使い、判定は `expires_on` の有無で行う**
+  (`Lot#expired?` / `Stock::Allocator` / 在庫 `q` と同じ基準)。したがって、期限が入っているロットは
+  「期限を管理する」を外しても期限切れになりうる。見えない期限で判定されたまま直せなくならないよう、
+  **ロット一覧と購入の編集フォームは `expires_on` が入っていれば必ず期限を出す**。
+- `Evaluator.call` は `BatchForecaster` と対称に**アーカイブ済みの品目を落とす**。
+  片方だけが落とすと、一覧で「要購入のバッジは出ないのに期限切れのバッジは出る」ねじれになり、
+  日次ダイジェスト (Phase 12) もアーカイブ済みを通知してしまう。1 品目版 (`Evaluator.for`) は
+  品目詳細用なので落とさない。
 
 ## 13. 設定ファイル
 
@@ -343,6 +405,44 @@ shared:
 
 品目ごとの上書きは `items.soon_threshold_days` / `urgent_threshold_days` / `expiry_warning_days` / `minimum_quantity` / `estimation_mode` / `manual_interval_days` で行う。
 
-## 14. 将来の改善候補
+## 14. Phase 10 から Phase 11 / 12 への申し送り
+
+**Phase 11 (買い物リスト)**
+
+- 要購入の導出は `Forecast::BatchForecaster.call(Item.active)` の結果で行う。
+  `status` が `:urgent` / `:soon` の品目だけを並べ、`:ok` と `:unknown` は並べない
+  (`unknown` を「買え」と言わないのは 1 節のとおり)。アーカイブ済みは結果に入らないので、
+  買い物リスト側で除外する必要はない。
+- 並び順に使える値は `Result#status` (`Forecast::Calculator::RANK` で比較できる) と
+  `Result#days_left` (ペース不明なら `nil`)。`days_left` の `nil` を最後に回すこと。
+- 品目一覧の絞り込み (`GET /items?purchase=urgent`) と同じ導出なので、
+  「買い物リストに出ているのに一覧の絞り込みに出ない」が起きないよう、両方とも
+  `BatchForecaster` の結果をそのまま使う (SQL で要購入を書き直さない)。
+- 購入を記録すると `q` が増えて `status` が `:ok` に戻る。`Result` はどこにも保存していないので、
+  次にリストを開いたときには自動的に消える (スヌーズと手動追加だけが永続行)。
+- リストに「在庫 n」や推奨数量を出すときは **`Result#quantity` を使う**
+  (`items.current_quantity` は期限切れロットを含むので、判定した在庫とずれる)。
+- **品目を一括登録した直後は、買い物リストとダッシュボードが「購入推奨」で埋まる。**
+  在庫イベントが 1 件も無い `auto` の品目は `q = 0` かつペース不明なので
+  `by_stockout` で `:urgent` (`reason: :out_of_stock`) になるため (7 節)。仕様どおりの挙動だが、
+  初回の体験として気になるなら「在庫を 1 度も登録していない品目は並べない」などの緩和を
+  Phase 11 で検討する (`Result#quantity` と `item.tracking_started_on` で判別できる)。
+
+**Phase 12 (日次ダイジェスト)**
+
+- 悪化の検知は `BatchForecaster` と `Expiry::Evaluator` の `status` を `item_alert_states` に
+  記録した前回値と比べて行う。どちらも `{ item_id => Result }` を返すので、そのまま突き合わせられる。
+- 比較に使うのは `status` だけにする (`days_left` は毎日 1 ずつ動くので、差分で通知すると毎日鳴る)。
+- 悪化の向きは `Forecast::Calculator::RANK` (`unknown: -1 < ok: 0 < soon: 1 < urgent: 2`) と
+  `Expiry::Status::RANK` (`fresh: 0 < expiring_soon: 1 < expired: 2`) で決める。
+- ジョブは `Date.current` を 1 回だけ取り、`BatchForecaster.call(items, today:)` に渡す
+  (日付をまたぐ瞬間に走っても、1 回のダイジェストの中で基準日がずれないように)。
+- 通知の文言は画面と同じ語彙 (`ja.forecast.status` / `ja.expiry.status`) を使う。
+- `status` は Symbol なので、`item_alert_states` には**文字列で保存して文字列で比べる**
+  (Symbol のまま入れると、次に読み出したときに文字列になって毎回「変化あり」になる)。
+- `Expiry::Evaluator.call` も `BatchForecaster` と同じくアーカイブ済みを落とすので、
+  ジョブ側で除外する必要はない (`Item.all` を渡しても通知されない)。
+
+## 15. 将来の改善候補
 
 - 生活パターンの変化への追随が遅いと感じたら、短期窓と長期窓を重み付けで合成する方式などに差し替える。`Forecast::Calculator` が PORO なので、spec を足すだけで検証できる。

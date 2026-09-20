@@ -210,6 +210,155 @@ RSpec.describe "品目", type: :request do
 
       expect(count_queries { get items_path }).to eq baseline
     end
+
+    describe "ステータスバッジ" do
+      # 日付をまたぐ瞬間に走っても落ちないよう、時刻を固定する
+      before { freeze_time }
+
+      # 色だけに頼らず文言を出す (docs/spec/03-screens.md ステータスの見せ方)
+      it "最低在庫を下回る品目には「購入推奨」のバッジが出る" do
+        item = create(:item, name: "ティッシュ", minimum_quantity: 5)
+        create(:lot, item: item, initial_quantity: 3)
+
+        get items_path
+
+        expect(rendered_list("品目一覧")).to include "購入推奨"
+      end
+
+      it "期限切れのロットを持つ品目には「期限切れ」のバッジが出る" do
+        item = create(:item, name: "レトルトカレー", tracks_expiry: true)
+        create(:lot, item: item, initial_quantity: 2, expires_on: Date.current - 1)
+
+        get items_path
+
+        expect(rendered_list("品目一覧")).to include "期限切れ"
+      end
+
+      it "購入不要の品目にはバッジを出さない" do
+        item = create(:item, name: "トイレットペーパー")
+        record_usages(item, interval: 5, times: 19)
+        stock_up(item, 200)
+
+        get items_path
+
+        expect(Forecast::ItemForecaster.call(item.reload).status).to eq :ok
+        expect(rendered_list("品目一覧")).not_to include "購入不要"
+        expect(rendered_list("品目一覧")).not_to include "購入推奨"
+      end
+
+      # データ不足は「—」。読み上げ用に理由を添える
+      it "データ不足の品目は「—」で、読み上げ用の説明が付く" do
+        item = create(:item, name: "しょうゆ")
+        stock_up(item, 5, days_ago: 60)
+        record_usage(item, days_ago: 10)
+
+        get items_path
+
+        expect(Forecast::ItemForecaster.call(item.reload).status).to eq :unknown
+        expect(rendered_list("品目一覧")).to include "—"
+        expect(rendered_list("品目一覧")).to include "予測できるデータがまだありません"
+      end
+
+      it "アーカイブ済みの品目にはバッジを出さない (予測しない)" do
+        create(:item, :archived, name: "むかしの洗剤", minimum_quantity: 5)
+
+        get items_path, params: { status: "archived" }
+
+        expect(rendered_list("品目一覧")).to include "むかしの洗剤"
+        expect(rendered_list("品目一覧")).not_to include "購入推奨"
+      end
+
+      # 期限のバッジも要購入と対称に落とす (片方だけ出るとねじれる)
+      it "アーカイブ済みの品目には期限のバッジも出さない" do
+        item = create(:item, :archived, name: "むかしのレトルト", tracks_expiry: true)
+        create(:lot, item: item, initial_quantity: 2, expires_on: Date.current - 1)
+
+        get items_path, params: { status: "archived" }
+
+        expect(rendered_list("品目一覧")).to include "むかしのレトルト"
+        expect(rendered_list("品目一覧")).not_to include "期限切れ"
+      end
+    end
+
+    describe "アラートからの絞り込み" do
+      before { freeze_time }
+
+      let!(:urgent) do
+        item = create(:item, name: "ティッシュ", minimum_quantity: 5)
+        create(:lot, item: item, initial_quantity: 3)
+        item
+      end
+      let!(:soon) do
+        item = create(:item, name: "トイレットペーパー")
+        record_usages(item, interval: 5, times: 19, last_used_days_ago: 2)
+        stock_up(item, 3)
+        item
+      end
+      let!(:expired) do
+        item = create(:item, name: "レトルトカレー", tracks_expiry: true)
+        create(:lot, item: item, initial_quantity: 2, expires_on: Date.current - 1)
+        item
+      end
+      let!(:expiring_soon) do
+        item = create(:item, name: "ヨーグルト", tracks_expiry: true)
+        create(:lot, item: item, initial_quantity: 2, expires_on: Date.current + 3)
+        item
+      end
+
+      it "purchase=urgent で購入推奨の品目だけになる" do
+        get items_path, params: { purchase: "urgent" }
+
+        expect(rendered_list("品目一覧")).to include urgent.name
+        expect(rendered_list("品目一覧")).not_to include soon.name
+      end
+
+      it "purchase=soon でそろそろ購入の品目だけになる" do
+        get items_path, params: { purchase: "soon" }
+
+        expect(rendered_list("品目一覧")).to include soon.name
+        expect(rendered_list("品目一覧")).not_to include urgent.name
+      end
+
+      it "expiry=expired で期限切れの品目だけになる" do
+        get items_path, params: { expiry: "expired" }
+
+        expect(rendered_list("品目一覧")).to include expired.name
+        expect(rendered_list("品目一覧")).not_to include expiring_soon.name
+      end
+
+      it "expiry=expiring_soon で期限間近の品目だけになる" do
+        get items_path, params: { expiry: "expiring_soon" }
+
+        expect(rendered_list("品目一覧")).to include expiring_soon.name
+        expect(rendered_list("品目一覧")).not_to include expired.name
+      end
+
+      # 壊れた値で 0 件になると「品目が無い」ように見えてしまうので、既定 (絞り込まない) に倒す
+      it "知らない値や壊れたパラメータは無視される" do
+        get items_path, params: { purchase: "everything", expiry: [ "expired" ] }
+
+        expect(response).to have_http_status(:ok)
+        expect(rendered_list("品目一覧")).to include urgent.name
+        expect(rendered_list("品目一覧")).to include soon.name
+      end
+
+      it "検索と組み合わせられる" do
+        get items_path, params: { purchase: "urgent", q: "ぜったいにない" }
+
+        expect(rendered_list("品目一覧")).not_to include urgent.name
+      end
+
+      # 予測も期限もアーカイブ済みは判定しないので、状態を「すべて」にしても出てこない
+      it "状態がすべてでも、アーカイブ済みの品目は絞り込みに出てこない" do
+        archived = create(:item, :archived, name: "むかしのレトルト", tracks_expiry: true)
+        create(:lot, item: archived, initial_quantity: 2, expires_on: Date.current - 1)
+
+        get items_path, params: { status: "all", expiry: "expired" }
+
+        expect(rendered_list("品目一覧")).to include expired.name
+        expect(rendered_list("品目一覧")).not_to include archived.name
+      end
+    end
   end
 
   describe "GET /items/:id (詳細)" do
@@ -243,6 +392,193 @@ RSpec.describe "品目", type: :request do
       expect(settings).to include "残り 30 日"      # そろそろ購入
       expect(settings).to include "残り 10 日"      # 購入推奨
       expect(settings).to include "14 日前から警告" # 期限警告日数
+    end
+
+    describe "予測" do
+      before { freeze_time }
+
+      def forecast_text
+        response.parsed_body.at("section[aria-label='予測']").text
+      end
+
+      it "在庫切れ予測日と残り日数とペースが出る (検算例 1)" do
+        item = create(:item, name: "トイレットペーパー", unit: "ロール")
+        record_usages(item, interval: 5, times: 19, last_used_days_ago: 2)
+        stock_up(item, 3)
+
+        get item_path(item)
+
+        expect(forecast_text).to include I18n.l(Date.current + 18)
+        expect(forecast_text).to include "あと 18 日"
+        expect(forecast_text).to include "約 6.0 ロール / 月"
+        expect(forecast_text).to include "そろそろ購入"
+        expect(forecast_text).to include "消費ペースから判定しました"
+      end
+
+      it "月に 1 個も使わない品目のペースは「約 n 日に 1 個」で出す (検算例 2)" do
+        item = create(:item, name: "くん煙剤", unit: "個")
+        record_usages(item, interval: 182, times: 5)
+
+        get item_path(item)
+
+        expect(forecast_text).to include "約 182 日に 1 個"
+        expect(forecast_text).to include I18n.l(Date.current + 182)
+      end
+
+      it "最低在庫数で判定したときはその旨を出す" do
+        item = create(:item, name: "ティッシュ", unit: "箱", minimum_quantity: 5)
+        create(:lot, item: item, initial_quantity: 3)
+
+        get item_path(item)
+
+        expect(forecast_text).to include "購入推奨"
+        expect(forecast_text).to include "最低在庫数 (5 箱) との比較で判定しました"
+        # 境界は「ちょうどならそろそろ購入、下回ったら購入推奨」(仕様 7 節)
+        expect(forecast_text).to include "ちょうどで「そろそろ購入」"
+        expect(forecast_text).to include "下回ると「購入推奨」になります"
+      end
+
+      # 判定が出ているのに画面に何も出ないと「壊れている」ように見える
+      it "購入不要のときも詳細には判定を文字で出す" do
+        item = create(:item, name: "トイレットペーパー", unit: "ロール")
+        record_usages(item, interval: 5, times: 19)
+        stock_up(item, 200)
+
+        get item_path(item)
+
+        expect(Forecast::ItemForecaster.call(item.reload).status).to eq :ok
+        expect(forecast_text).to include "購入不要"
+      end
+
+      # 仕様 9 節「need_by_on が過去なら today に丸める」。在庫が残っているのに
+      # 「在庫切れ予測日: 今日」とだけ出すと誤解を生む
+      it "在庫が残ったまま予測日が過ぎているときは棚卸を促す" do
+        item = create(:item, name: "トイレットペーパー", unit: "ロール")
+        record_usages(item, interval: 5, times: 19, last_used_days_ago: 40)
+        stock_up(item, 3)
+
+        get item_path(item)
+
+        forecast = Forecast::ItemForecaster.call(item.reload)
+        expect(forecast.days_left).to eq 0
+        expect(forecast.quantity).to eq 3
+        expect(forecast_text).to include "買っておくべき期限はすでに過ぎています"
+        expect(forecast_text).to include "在庫数が合っているか確認してください"
+      end
+
+      it "在庫 0 でペースが分からなければその旨を出す" do
+        item = create(:item, name: "ぼうさいようひん")
+        stock_up(item, 1, days_ago: 30)
+        record_usage(item, days_ago: 0)
+
+        get item_path(item)
+
+        expect(forecast_text).to include "購入推奨"
+        expect(forecast_text).to include "在庫が 0 で、消費ペースがまだ分かりません"
+      end
+
+      # データ不足でも不安にさせない (docs/spec/03-screens.md ステータスの見せ方)
+      it "使用の記録が 1 件だけなら「2 回たまると予測を始めます」と出す" do
+        item = create(:item, name: "しょうゆ")
+        stock_up(item, 5, days_ago: 60)
+        record_usage(item, days_ago: 10)
+
+        get item_path(item)
+
+        # 同じ日に 2 回記録しても消費イベントは 1 件なので「別の日に」と書く
+        expect(forecast_text).to include "使用の記録が別の日に 2 回たまると予測を始めます"
+      end
+
+      # 「あと n 日」とは書けない。窓の両端が消費イベント日のときは日が経っても
+      # observed_days が増えず、いつまでも同じ日数を言い続けてしまう
+      it "観測日数が足りなければ日数を言わずに予測開始の目安を出す" do
+        item = create(:item, name: "あたらしいひん")
+        stock_up(item, 10, days_ago: 4)
+        record_usage(item, days_ago: 3)
+        record_usage(item, days_ago: 0)
+
+        get item_path(item)
+
+        expect(forecast_text).to include "観測期間がまだ短いため、次の使用の記録から予測を始めます"
+        expect(forecast_text).not_to include "日ぶんの記録"
+      end
+
+      it "予測しない設定の品目にはその旨を出す" do
+        item = create(:item, name: "ひじょうしょく", estimation_mode: :none)
+        stock_up(item, 5, days_ago: 60)
+
+        get item_path(item)
+
+        expect(forecast_text).to include "予測しない設定です"
+      end
+
+      it "在庫を 1 件も登録していない品目にはその旨を出す" do
+        item = create(:item, name: "とうろくしたばかり")
+
+        get item_path(item)
+
+        expect(forecast_text).to include "在庫を登録すると予測を始めます"
+        expect(forecast_text).to include "在庫が 0 で、消費ペースがまだ分かりません"
+      end
+
+      it "データ不足のときは判定の理由を出さない (何がたまれば始まるかだけを出す)" do
+        item = create(:item, name: "しょうゆ")
+        stock_up(item, 5, days_ago: 60)
+        record_usage(item, days_ago: 10)
+
+        get item_path(item)
+
+        expect(forecast_text).not_to include "判定しました"
+        expect(forecast_text).not_to include "消費ペース"
+      end
+
+      it "期限切れのロットを在庫に数えていないことを添える" do
+        item = create(:item, name: "レトルトカレー", tracks_expiry: true)
+        create(:lot, item: item, initial_quantity: 2, expires_on: Date.current - 1)
+
+        get item_path(item)
+
+        expect(forecast_text).to include "期限切れの 1 ロットは、この判定の在庫に数えていません"
+      end
+    end
+
+    describe "期限" do
+      before { freeze_time }
+
+      let(:item) { create(:item, name: "レトルトカレー", unit: "箱", tracks_expiry: true) }
+
+      def expiry_text
+        response.parsed_body.at("section[aria-label='期限']")&.text.to_s
+      end
+
+      it "最も近い期限と期限切れの数が出て、廃棄に進める" do
+        create(:lot, item: item, initial_quantity: 2, expires_on: Date.current - 1)
+        create(:lot, item: item, initial_quantity: 3, expires_on: Date.current + 100)
+
+        get item_path(item)
+
+        expect(expiry_text).to include "期限切れ"
+        expect(expiry_text).to include I18n.l(Date.current - 1)
+        expect(expiry_text).to include "期限切れのロット: 1 件"
+        expect(response.body).to include new_item_disposal_path(item)
+      end
+
+      it "期限が近いロットの数が出る" do
+        create(:lot, item: item, initial_quantity: 3, expires_on: Date.current + 3)
+
+        get item_path(item)
+
+        expect(expiry_text).to include "期限間近"
+        expect(expiry_text).to include "期限が近いロット: 1 件"
+      end
+
+      it "期限を入れたロットが無ければ期限のセクションを出さない" do
+        create(:lot, item: item, initial_quantity: 3, expires_on: nil)
+
+        get item_path(item)
+
+        expect(response.parsed_body.at("section[aria-label='期限']")).to be_nil
+      end
     end
 
     describe "ロット一覧" do
@@ -285,6 +621,19 @@ RSpec.describe "品目", type: :request do
         expect(rendered_list("ロット一覧")).to include "のこってる"
         expect(rendered_list("ロット一覧")).not_to include "つかいきった"
         expect(rendered_list("使い切ったロット一覧")).to include "つかいきった"
+      end
+
+      # 判定 (在庫 q からの除外・期限切れバッジ) は expires_on の有無で行うので、
+      # 「期限を管理する」を外した品目でも期限は必ず見せる (でないと直しようがない)
+      it "期限を管理しない品目でも、期限が入っていればロット一覧に出す" do
+        plain = create(:item, name: "むかしは期限を管理していた", unit: "個")
+        create(:lot, item: plain, initial_quantity: 2, expires_on: Date.current - 1)
+
+        get item_path(plain)
+
+        lots = rendered_list("ロット一覧")
+        expect(lots).to include I18n.l(Date.current - 1)
+        expect(lots).to include "期限切れ"
       end
 
       it "ロットが無ければその旨を出す" do

@@ -1,8 +1,10 @@
-<%# locals: (item:) %>
+<%# locals: (item:, forecast: nil, expiry: nil) %>
 <%#
   品目一覧の 1 行 (docs/spec/03-screens.md 画面 2)。
   ワンタップ使用の Turbo Stream がこの li を丸ごと差し替えるので、id を付けておく。
   「使った」ボタンはリンクの中に入れられない (入れ子のフォームになる) ので横に並べる。
+  ステータスバッジは予測 (forecast) と期限 (expiry) の判定結果から描く。
+  アーカイブ済みの品目は予測しないので、どちらも nil でバッジは出ない。
 %>
 <li id="<%= dom_id(item) %>" class="flex items-center gap-2 pr-3">
   <%= link_to item_path(item), class: "flex min-h-14 flex-1 items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50" do %>
@@ -19,6 +21,7 @@
           <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">アーカイブ済み</span>
         <% end %>
       </span>
+      <%= render "items/status_badges", forecast: forecast, expiry: expiry %>
     </span>
     <span class="shrink-0 text-right">
       <span class="block text-lg font-bold text-slate-900"><%= item.current_quantity %></span>
