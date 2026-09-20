@@ -207,7 +207,8 @@ Rails.application.routes.draw do
   resource  :menu,        only: :show       # 下部タブの「メニュー」
   resource  :record_menu, only: :show, path: "record"   # 下部タブ中央の「＋記録」
   resource  :account,  only: %i[show update]
-  resources :passkeys, only: %i[index create destroy] do
+  # パスキーの一覧は /account のセクションが兼ねるので index は持たない
+  resources :passkeys, only: %i[create destroy] do
     post :options, on: :collection
   end
   resources :web_push_subscriptions, only: %i[create destroy] do

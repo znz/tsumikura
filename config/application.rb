@@ -14,7 +14,9 @@ module Tsumikura
     # Please, add to the `ignore` list any other `lib` subdirectories that do
     # not contain `.rb` files, or that should not be reloaded or eager loaded.
     # Common ones are `templates`, `generators`, or `middleware`, for example.
-    config.autoload_lib(ignore: %w[assets tasks])
+    # webauthn_origin.rb は config/initializers/webauthn.rb が require_relative で読む。
+    # 初期化子はオートロードより前に走るので、Zeitwerk の管理からは外す
+    config.autoload_lib(ignore: %w[assets tasks webauthn_origin.rb])
 
     # Configuration for the application, engines, and railties goes here.
     #

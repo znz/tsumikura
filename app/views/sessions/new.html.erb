@@ -5,7 +5,10 @@
   <%= form_with url: session_path, class: "mt-8 space-y-5" do |form| %>
     <div>
       <%= form.label :email_address, "メールアドレス", class: label_classes %>
-      <%= form.email_field :email_address, required: true, autofocus: true, autocomplete: "username",
+      <%# autocomplete に webauthn を足すと、対応ブラウザがこの欄にパスキーの候補を出す
+          (conditional UI。docs/spec/05-auth.md 5 節) %>
+      <%= form.email_field :email_address, required: true, autofocus: true,
+            autocomplete: Passkey.available? ? "username webauthn" : "username",
             value: params[:email_address], class: field_classes %>
     </div>
 
@@ -16,6 +19,21 @@
     </div>
 
     <%= form.submit "ログイン", class: primary_button_classes %>
+  <% end %>
+
+  <% if Passkey.available? %>
+    <%# パスキーは追加の認証手段。ボタンは対応ブラウザでだけ JS が出す
+        (未対応のブラウザに押せないボタンを見せない) %>
+    <div class="mt-5" data-controller="passkey-login"
+         data-passkey-login-url-value="<%= sessions_passkey_path %>"
+         data-passkey-login-options-url-value="<%= options_sessions_passkey_path %>">
+      <button type="button" hidden
+              data-passkey-login-target="button"
+              data-action="passkey-login#signIn"
+              class="<%= secondary_button_classes("w-full") %>">パスキーでログイン</button>
+
+      <p data-passkey-login-target="status" role="status" class="mt-2 text-center text-sm text-slate-600"></p>
+    </div>
   <% end %>
 
   <p class="mt-6 text-center text-sm text-slate-500">

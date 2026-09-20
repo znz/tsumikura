@@ -2,7 +2,54 @@
 
 [実装計画](implementation-plan.md) / [概要](../spec/00-overview.md) / [デプロイ](../ops/deployment.md)
 
-## 1. 未決 (決めるタイミングが来たら決める)
+## 1. 残作業 (v1 の実装は完了。実行・差し替えだけが残っている)
+
+全 13 フェーズの実装とテストは終わっている。ここに残るのは**この環境では実行できなかったこと**で、
+コードの不足ではない。上から順に消していくと v1 の運用が始められる。
+
+| # | 残作業 | 何をするか | どこを見るか |
+|---|---|---|---|
+| A | **GitHub Actions の初回実行** | リポジトリを push して CI を 1 回通す。`ruby/setup-ruby` が `.ruby-version` の 4.0.7 を取得できるかはここで初めて分かる。取得できなければ利用可能な最新パッチに下げる | [開発環境](../ops/development.md#8-ci) / 下の「決定済み」 |
+| B | **`js: true` の system spec の CI 初回実行** | 実ブラウザの system spec (初期パスワードの表示など) は手元では Chrome を用意できていない。CI で初めて走るので、最初の 1 回は結果を確かめる。落ちたら `config/ci.rb` と `.github/workflows/ci.yml` の artifact の取り回しを見る | [開発環境](../ops/development.md#8-ci) |
+| C | **Dokku 初回デプロイ** | [初回デプロイ手順書](../ops/first-deploy.md) を上から順に実行する。Thruster を残すか外すか (未決 #1) はこのときに実地で決まる | [初回デプロイ手順書](../ops/first-deploy.md) |
+| D | **パスキーの実機確認** | パスキーは HTTPS の実機でしか確かめられない (iPhone の Face ID / Android / PC のセキュリティキー / conditional UI)。デプロイ後に手順どおり試す。**下の注意も読むこと** | [認証](../spec/05-auth.md#実機での確認手順-https-の本番環境で) |
+| E | **Web Push の実機確認** | 通知も実機が要る (iOS は「ホーム画面に追加」が前提)。VAPID 鍵を入れて `/account` から登録し、テスト送信を受け取る | [通知](../spec/04-notifications.md) / [初回デプロイ手順書 3.1](../ops/first-deploy.md#31-vapid-鍵-web-push) |
+| F | **アイコンの差し替え** | `public/icon.png` は Rails 既定のまま、`public/icon.svg` は暫定。512px / 192px の PNG を用意して差し替え、manifest に 192px の行を足す。この環境ではバイナリを作れない | 下の未決 #12 |
+| G | **バックアップの設定** | DB のバックアップは初回デプロイと同時に設定する (後回しにしない) | [初回デプロイ手順書](../ops/first-deploy.md) |
+
+### パスキーの実機確認で特に見るところ
+
+**パスキーの JavaScript はこの環境で一度も実行していない** (node が無く、`js: true` の system spec も
+パスキーは扱っていない)。最初の 1 回は次の順で確かめる。
+
+1. ログイン画面と `/account` をブラウザで開き、**コンソールに import エラーが出ていない**ことを見る
+   (`passkey_codec` の importmap の pin が効いているか。`Failed to resolve module specifier` が出たら
+   `config/importmap.rb` と `bin/importmap json` を疑う)。
+2. **旧ブラウザ用のフォールバック経路は未検証。** `PublicKeyCredential.parseCreationOptionsFromJSON` /
+   `parseRequestOptionsFromJSON` / `credential.toJSON()` を持たないブラウザでは自前の base64url 変換に
+   落ちるが、その経路を実際に通したことはない (新しい Safari / Chrome はどれも持っている)。
+   古い端末で登録できないときは、ここを最初に疑う。
+3. **Safari は `navigator.credentials.create` をユーザー操作の直後に呼ぶことを求める。**
+   登録はパスワード確認の `fetch` を 1 回挟んでから `create` を呼ぶので、
+   Safari が「ユーザー操作から離れすぎ」と見なして `NotAllowedError` にする可能性がある。
+   実機でしか分からない。もし弾かれるなら、challenge を先に取っておく (画面を開いた時点で
+   パスワードを確かめる) 形に組み替える。
+4. user verification を必須にしたので、**PIN を設定していないセキュリティキーは登録時に PIN の設定を
+   求められる**。これは仕様どおり。
+
+### パスキーの `js: true` system spec について
+
+実ブラウザでのパスキーの spec は **Chrome DevTools Protocol の Virtual Authenticator**
+(`WebAuthn.addVirtualAuthenticator`) が要る。Capybara / Selenium から CDP を叩く設定と、
+認証器の状態をテストごとに作り直す後始末が必要で、得られるものの割にセットアップが重い。
+
+v1 では **request spec (`WebAuthn::FakeClient`) で検証ロジックを固定**し、ビューについては
+Stimulus の `data-*` 属性とボタンが出ていることを request spec で守っている。
+実ブラウザでの確認は上の D (実機確認) で代替する。
+
+運用を始めてパスキーまわりを触ることが増えたら、Virtual Authenticator の system spec を足す。
+
+## 2. 未決 (決めるタイミングが来たら決める)
 
 | # | 項目 | リスク / 論点 | 推奨 | 決めるフェーズ |
 |---|---|---|---|---|
@@ -15,13 +62,13 @@
 | 7 | **VAPID 鍵のバックアップ** | 鍵を失うと全購読が無効になり、家族全員が再購読することになる | **手元で生成してからパスワードマネージャ等へ退避し、そのあと `dokku config:set` する** (サーバに生成させない)。手順は [初回デプロイ手順書 3.1 節](../ops/first-deploy.md#31-vapid-鍵-web-push)。`dokku config:show` からも復元できるが、アプリを作り直すと失われる | 12 |
 | 8 | **Dokku 上での migration 失敗** | `app.json` の predeploy が落ちるとデプロイが止まる (正しい挙動) | 破壊的 migration は 2 段階デプロイ (カラム追加 → コード変更 → 旧カラム削除) にする。家庭用なので通常は不要だが、方針として明記しておく | 随時 |
 | 9 | **`json` gem を 3 未満に固定している** | json 3 は `JSON.parse` のオプションをキーワード引数でしか受けないが、ActiveSupport 8.1.3.1 はハッシュを位置引数で渡す。固定しないと spec が 70 件落ちる。固定したままだと json 3 の修正・改善を取りこぼす | `Gemfile` の `gem "json", "< 3"` を維持する。**Rails を更新したらこの行を外して `bin/rspec` を流し**、通るなら固定を解除する ([実装計画](implementation-plan.md) 付録 A) | Rails 更新時 |
-| 10 | **パスワードの最小長 (現在 8 文字)** | 家庭用とはいえ公開インターネットに出る。8 文字は NIST SP 800-63B の下限であって推奨値ではない | まずは 8 文字で運用する (bcrypt + `rate_limit to: 10, within: 3.minutes`、管理者発行の初期パスワードは約 92 bit)。Phase 13 でパスキーが入り常用手段が変わるので、そこで 10〜12 文字への引き上げを再検討する。引き上げる場合は既存ユーザーの再設定が要る ([認証](../spec/05-auth.md#パスワードの要件)) | 13 |
+| 10 | **パスワードの最小長 (現在 8 文字)** | 家庭用とはいえ公開インターネットに出る。8 文字は NIST SP 800-63B の下限であって推奨値ではない | まずは 8 文字で運用する (bcrypt + `rate_limit to: 10, within: 3.minutes`、管理者発行の初期パスワードは約 92 bit)。**Phase 13 でパスキーが入ったが、8 文字のまま据え置いた**: パスキーは追加手段でパスワードは常に有効なので、長さの根拠は変わらない。引き上げると既存ユーザー全員の再設定が要る割に、常用がパスキーに移れば手入力の機会自体が減る。実運用で不正ログインの試行が見えたら引き上げる ([認証](../spec/05-auth.md#パスワードの要件)) | 運用後 |
 | 11 | **確定済みの棚卸の取り消し** | 棚卸のマイナス差分は `counted_on` の 1 日に全量が消費として計上されるので、打ち間違い (12 を 1 と入れる) はそのまま予測に残り続ける。いまは確定済みの棚卸を取り消す手段が無く、直すには逆向きの棚卸をもう 1 回するしかない | Phase 9 では**確認画面で大きく減る差分に注意の印**を出して入力時に気づかせる (`StockTakeEntry#large_decrease?`: 記録在庫の半分以上かつ 2 以上の減少)。取り消し機能は、実運用で打ち間違いが起きてから検討する (movement をまとめて消して再計算するだけなので、あとからでも足せる) | 運用後 |
 | 12 | **PWA のアイコン画像** | `public/icon.png` は Rails 既定のアイコンのまま、`public/icon.svg` は「つ」の字だけの暫定版。ホーム画面に追加したときのアイコンが「つみくら」のものにならない。Android は 192px の PNG を好む (manifest には今は 512px の PNG と SVG しか載っていない) | **ユーザーへの依頼**: 512px と 192px の PNG (と必要なら maskable 用の余白付き) を用意して `public/icon.png` / `public/icon-192.png` に置き、`app/views/pwa/manifest.json.erb` の `icons` に 192px の 1 行を足す。この環境ではバイナリを作れないので実装側では差し替えていない。**安全域 (周囲 20%) を持つアイコンにしたら、manifest に `purpose: "maskable"` の行も足す** (今は Rails 既定のアイコンに安全域が無いので外してある)。[通知](../spec/04-notifications.md#1-pwa-の有効化) | 12 (実装済みだが画像だけ残り) |
 | 13 | **ログアウトしたときに、その端末の購読を消すか** | ログアウトしても購読は残るので、その端末には通知が届き続ける。共用の端末を使ったあとに気づきにくい | 今は消さない (通知の中身は世帯で共通で、変わるのは種別の ON/OFF だけ。止めたいときは `/account` の「通知を受け取る端末」から削除できる)。共用端末で使うようになったら、`SessionsController#destroy` でその端末の購読も消すことを検討する。[通知](../spec/04-notifications.md#5-割り切っていること) | 運用後 |
 | 14 | **購読の再同期が `/account` でしか働かない** | Push サービス側で購読が作り直されると (`pushsubscriptionchange`)、次に `/account` を開くまで通知が止まる。1 日 1 通なので、止まっていることに気づきにくい | 今は割り切る (Service Worker からは新しい購読をサーバへ送れない)。気になったら、購読の再同期だけをレイアウト常駐の小さな Stimulus controller に出して全ページで走らせる。[通知](../spec/04-notifications.md#5-割り切っていること) | 運用後 |
 
-## 2. 決定済み (理由を残す)
+## 3. 決定済み (理由を残す)
 
 | 項目 | 決定 | 理由 / 参照 |
 |---|---|---|
@@ -61,4 +108,13 @@
 | **iOS の Web Push** | **「ホーム画面に追加」が必須と案内する** | ブラウザ側の制約で回避不能。`/account` で iOS を検出して案内を出す。[通知](../spec/04-notifications.md#6-ios-の制約) |
 | **`solid_queue:update` の運用** | **生成された `db/queue_schema.rb` は残さず、差分を migration に手で取り込む** | 単一 DB 構成と食い違うため。手順は [デプロイ](../ops/deployment.md#13-gem-アップデート時の運用-solid_queueupdate) |
 | **バックアップ** | **Phase 5 のデプロイと同時に設定する** | 家族の記録が消えると復旧不能。後回しにしない |
+| **パスキーの user verification** | **必須にする** (`user_verification: "required"` + `verify(..., user_verification: true)`) | 査読で指摘。パスキー 1 つでログインできる = 単独要素なので、`preferred` だと「持っているだけ」で入れてしまう (PIN 無しの USB セキュリティキーを拾って挿すだけ)。FakeClient で `user_verified: false` の assertion が `preferred` では通ることを実測した。代償として、PIN を設定していないセキュリティキーは登録時に PIN の設定を求められる |
+| **challenge の 1 回限りの担保** | **有効期限 (登録 5 分 / 認証 15 分) + `Rails.cache` への消費記録 (SHA256 ダイジェスト、`unless_exist`)** | 査読で指摘。セッションが CookieStore なので `session.delete` は「次の Cookie から消す」だけで、古い Cookie はサーバから見ると永久に有効。`sign_count` を常に 0 で返す同期型のパスキーでは、Cookie と assertion の組を送り直すだけで何度でもログインできてしまう。登録側では、生体認証のキャンセルで残った challenge を盗まれるとパスワードの再確認を迂回できる |
+| **パスキー登録時のパスワード再確認** | **必須にする** (`POST /passkeys/options` で `user.authenticate` を通ったときだけ challenge を出す) | 仕様 (05-auth.md) に定めが無かったので Phase 13 で決めた。セッションを盗んだ者が自分のパスキーを足すと、**パスワードを変えても居座れる** (パスキーはパスワード変更で失効しない)。challenge を出す前に確かめるので、生体認証のダイアログの前に間違いが分かる。challenge が無ければ `POST /passkeys` は必ず失敗するので、確認は 1 か所で足りる |
+| **登録用と認証用の challenge のセッションキー** | **必ず分ける** (`:passkey_registration_challenge` / `:passkey_authentication_challenge`) | 同じキーだと、未ログインで叩ける `/sessions/passkey/options` で発行した challenge を、パスワードの再確認なしの登録に使い回せてしまう |
+| **管理者のパスワード再設定とパスキー** | **対象ユーザーのパスキーもすべて消す** | 仕様に定めが無かったので Phase 13 で決めた。再設定は「乗っ取られたかもしれない」ときの操作でもあり、攻撃者が登録したパスキーを残すと入り続けられる。安全側に倒した。確認画面に件数を出し、完了画面で「n 件も削除しました」と伝える。本人は新しいパスワードで入って `/account` から登録し直す |
+| **ユーザーの無効化とパスキー** | **消さない** | 無効化は取り消せる (Web Push の購読と同じ方針)。ログイン側が `deactivated?` を見て断るので、無効化中はパスキーでも入れない |
+| **production の WebAuthn origin** | **`WEBAUTHN_ORIGIN` が未設定なら `APP_HOST` から `https://#{APP_HOST}` を導く** | 設定を 1 つ忘れただけでパスキーが動かないのを避ける。非標準ポートや別ドメインで公開するときだけ明示すればよい。`APP_HOST` も無ければ `allowed_origins` が空になり、パスキーだけが無効になってアプリは起動する (VAPID と同じ) |
+| **webauthn gem の origin 設定** | **`allowed_origins` (複数形)** | 3.4.0 で入った現行 API。`origin` / `origin=` は非推奨で、呼ぶと警告を出し将来削除される (gem のソースで確認) |
+| **パスキーの JS ライブラリ** | **足さない** (`app/javascript/passkey_codec.js` に自前の base64url 変換) | 新しいブラウザは `PublicKeyCredential.parseCreationOptionsFromJSON` / `parseRequestOptionsFromJSON` と `credential.toJSON()` を持つ。無いブラウザ向けの変換は 40 行ほどで済むので、webauthn-json を importmap に足す必要はない |
 | **`db/seeds.rb` の冪等性** | **ENV なしでも成功する空に近い実装から始める** | CI の `db:seed:replant` を通すため。管理者作成は rake タスクに分離する |

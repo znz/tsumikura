@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_20_000014) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -104,6 +104,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000014) do
     t.check_constraint "initial_quantity > 0", name: "lots_initial_quantity_positive"
     t.check_constraint "pack_size IS NULL OR (pack_size * pack_count) = initial_quantity", name: "lots_pack_quantity_matches"
     t.check_constraint "remaining_quantity >= 0", name: "lots_remaining_quantity_non_negative"
+  end
+
+  create_table "passkeys", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "external_id", limit: 1400, null: false
+    t.datetime "last_used_at"
+    t.string "nickname", limit: 50, null: false
+    t.text "public_key", null: false
+    t.bigint "sign_count", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["external_id"], name: "index_passkeys_on_external_id", unique: true
+    t.index ["user_id"], name: "index_passkeys_on_user_id"
   end
 
   create_table "sessions", force: :cascade do |t|
@@ -394,7 +407,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000014) do
     t.string "password_digest", null: false
     t.integer "role", default: 0, null: false
     t.datetime "updated_at", null: false
+    t.string "webauthn_id", limit: 255
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
+    t.index ["webauthn_id"], name: "index_users_on_webauthn_id", unique: true
   end
 
   create_table "web_push_subscriptions", force: :cascade do |t|
@@ -419,6 +434,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000014) do
   add_foreign_key "lots", "items"
   add_foreign_key "lots", "stores", on_delete: :nullify
   add_foreign_key "lots", "users", on_delete: :restrict
+  add_foreign_key "passkeys", "users", on_delete: :restrict
   add_foreign_key "sessions", "users"
   add_foreign_key "shopping_list_items", "items", on_delete: :restrict
   add_foreign_key "shopping_list_items", "users", column: "added_by_id", on_delete: :restrict

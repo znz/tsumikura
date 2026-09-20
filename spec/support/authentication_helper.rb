@@ -20,7 +20,9 @@ module SystemAuthenticationHelper
     visit new_session_path
     fill_in "メールアドレス", with: user.email_address
     fill_in "パスワード", with: password
-    click_button "ログイン"
+    # 実ブラウザ (js: true) ではログイン画面に「パスキーでログイン」ボタンも出る。
+    # Capybara の既定は部分一致なので、exact: true でパスワードの送信ボタンだけを押す
+    click_button "ログイン", exact: true
   end
 end
 

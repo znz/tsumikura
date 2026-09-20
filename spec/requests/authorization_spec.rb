@@ -105,7 +105,14 @@ authenticated_actions = [
   [ "通知の購読の削除", :delete, -> { web_push_subscription_path(web_push_subscription) }, -> { {} } ],
   [ "通知のテスト送信", :post, -> { notification_test_path }, -> { {} } ],
   [ "通知の種別の更新", :patch, -> { account_notification_setting_path },
-    -> { { user: { notify_purchases: "0", notify_expiries: "0" } } } ]
+    -> { { user: { notify_purchases: "0", notify_expiries: "0" } } } ],
+
+  # パスキー (docs/spec/05-auth.md 5 節)。**未ログインで通すのは
+  # sessions/passkeys の options / create だけ**なので、この 3 つはここで守る
+  [ "パスキーの登録オプション", :post, -> { options_passkeys_path },
+    -> { { current_password: "password" } } ],
+  [ "パスキーの登録", :post, -> { passkeys_path }, -> { { credential: "{}" } } ],
+  [ "パスキーの削除", :delete, -> { passkey_path(passkey) }, -> { {} } ]
 ]
 
 RSpec.describe "品目とマスタの認可", type: :request do
@@ -124,6 +131,8 @@ RSpec.describe "品目とマスタの認可", type: :request do
   let(:shopping_list_item) { create(:shopping_list_item, :checked, item: item, added_by: create(:user)) }
   # 通知の購読は**他人のもの**を置く (消せないことを確かめるため)
   let(:web_push_subscription) { create(:web_push_subscription, endpoint: push_endpoint("authorization-other")) }
+  # パスキーも**他人のもの**を置く (消せないことを確かめるため)
+  let(:passkey) { create(:passkey) }
   let(:category) { create(:category, name: "もとのカテゴリ") }
   let(:storage_location) { create(:storage_location, name: "もとの保管場所") }
   let(:store) { create(:store, name: "もとの店舗") }
@@ -148,6 +157,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
       stock_takes stock_takes/finalizations
       shopping_lists shopping_list_items purchases
       web_push_subscriptions notification_tests account/notification_settings
+      passkeys
       item_purposes item_purposes/positions item_purposes/archives
       categories categories/positions
       storage_locations storage_locations/positions
@@ -186,6 +196,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
       stock_take
       shopping_list_item
       web_push_subscription
+      passkey
       category
       storage_location
       store
@@ -193,7 +204,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
       expect { request_all_actions }.not_to change {
         [ Item.count, Lot.count, StockMovement.count, UsageRecord.count, ItemPurpose.count,
           StockTake.count, StockTakeEntry.count, ShoppingListItem.count, WebPushSubscription.count,
-          Category.count, StorageLocation.count, Store.count ]
+          Passkey.count, Category.count, StorageLocation.count, Store.count ]
       }
     end
 
@@ -207,6 +218,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
       stock_take
       shopping_list_item
       web_push_subscription
+      passkey
 
       request_all_actions
 
@@ -221,6 +233,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
       expect(shopping_list_item.quantity).to be_nil
       expect(item.current_quantity).to eq 2
       expect(WebPushSubscription.exists?(web_push_subscription.id)).to be true
+      expect(Passkey.exists?(passkey.id)).to be true
       expect(category.reload.name).to eq "もとのカテゴリ"
       expect(storage_location.reload.name).to eq "もとの保管場所"
       expect(store.reload.name).to eq "もとの店舗"

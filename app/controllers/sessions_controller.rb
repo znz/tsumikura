@@ -17,11 +17,7 @@ class SessionsController < ApplicationController
     # 無効化されたユーザーはパスワードが正しくてもログインさせない。
     # 無効化されていることは伏せ、パスワード誤りと同じ文言を返す
     if user && !user.deactivated?
-      # 復帰先は reset_session (セッション固定攻撃の対策) で消えるので先に読み出す
-      url = after_authentication_url
-      reset_session
-      start_new_session_for user
-      redirect_to url
+      redirect_to start_authenticated_session_for(user)
     else
       redirect_to new_session_path, alert: INVALID_CREDENTIALS_MESSAGE
     end

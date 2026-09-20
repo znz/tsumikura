@@ -7,6 +7,16 @@
     <%= @user.name %> さんのログイン中のデバイスはすべてログアウトされます。
   </p>
 
+  <%# 乗っ取り対応も兼ねる操作なので、パスキーも一緒に消す (docs/spec/05-auth.md 5 節) %>
+  <p data-passkey-count class="mt-2 text-sm text-slate-700">
+    <% if @passkey_count.positive? %>
+      登録済みのパスキー <%= @passkey_count %> 件も削除されます。<%= @user.name %> さんには、
+      新しいパスワードでログインしてからアカウント設定で登録し直してもらってください。
+    <% else %>
+      <%= @user.name %> さんはパスキーを登録していません。
+    <% end %>
+  </p>
+
   <%# 再設定後は新しいパスワードを直接表示するため、Turbo のフォーム処理を使わない %>
   <%= button_to "新しいパスワードを発行", admin_user_password_reset_path(@user),
         form: { data: { turbo: false } },

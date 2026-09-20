@@ -106,8 +106,9 @@ ssh -t dokku@<Dokku サーバのホスト名> config:set --no-restart tsumikura 
 - `SOLID_QUEUE_IN_PUMA=1`: Puma に Solid Queue の supervisor を同居させる ([デプロイ構成](deployment.md#2-ジョブの実行-solid_queue_in_puma))。
 - `WEB_CONCURRENCY=0`: Puma を single mode にする (ワーカープロセスなし)。
 - `RAILS_MAX_THREADS=3`: Puma のスレッド数。`config/database.yml` の `max_connections` はこの値に Solid Queue supervisor 分の余裕 (+2) を足した数を既定にしている (`DB_POOL` で明示上書きできる。[デプロイ構成](deployment.md#2-ジョブの実行-solid_queue_in_puma))。
-- `WEBAUTHN_*` (パスキー) は**後で設定する** (Phase 13 で必要になったときに `dokku config:set` を追加実行する)。今は設定不要。
 - `VAPID_*` (Web Push) は次の 3.1 節で設定する。初回デプロイ前に入れておくと、デプロイ直後から通知を試せる。
+- `WEBAUTHN_*` (パスキー) は 3.2 節。**`APP_HOST` と同じドメインで公開するなら設定しなくてよい**
+  (未設定なら `https://$APP_HOST` を使う)。
 
 ### 3.1 VAPID 鍵 (Web Push)
 
@@ -148,6 +149,36 @@ unset VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
 > `public/icon.svg` は暫定の簡易アイコン。ホーム画面に追加したときの見た目が「つみくら」の
 > ものにならないので、512px / 192px の PNG を用意して差し替えること
 > ([未決事項](../plan/open-questions.md))。
+
+### 3.2 WEBAUTHN (パスキー)
+
+パスキーは [認証](../spec/05-auth.md#5-パスキー-webauthn) のとおり **origin** (スキーム + ホスト) と
+**RP ID** (ホスト名だけ) を見て検証する。
+
+**`APP_HOST` と同じドメインで HTTPS 公開するなら、設定は要らない。**
+アプリが `WEBAUTHN_ORIGIN` を `https://$APP_HOST`、`WEBAUTHN_RP_ID` をそのホスト名として導く。
+
+次のどれかに当てはまるときだけ明示する。
+
+- 非標準ポートで公開する (`https://tsumikura.example.com:8443` など)
+- アプリのドメイン (`APP_HOST`) と、家族が実際に開く URL が違う
+- apex ドメインでも登録済みのパスキーを使えるようにしたい (RP ID を親ドメインにする)
+
+```bash
+: "${APP_HOST:?先に export APP_HOST=... を実行すること}"
+dokku config:set tsumikura \
+  WEBAUTHN_ORIGIN="https://$APP_HOST" \
+  WEBAUTHN_RP_ID="$APP_HOST"
+```
+
+- **`WEBAUTHN_RP_ID` はホスト名だけ。** `https://` を付けたりパスを足したりすると、ブラウザが
+  登録そのものを拒否する (`SecurityError`)。
+- **RP ID を後から変えると、登録済みのパスキーはすべて使えなくなる。** 家族全員がパスワードで
+  ログインし直して `/account` から登録し直すことになるので、ドメインは最初に決めて動かさない。
+  (パスワードは常に有効なので、ロックアウトはしない。)
+- 秘密情報ではないので `read -rs` は不要。`dokku config:show tsumikura` で確認できる。
+- パスキーは `localhost` 以外では **HTTPS が必須**。7 節 (Let's Encrypt) を済ませてから試す。
+  実機での確認手順は [認証](../spec/05-auth.md#実機での確認手順-https-の本番環境で) にある。
 
 ## 4. ドメイン設定、永続ストレージのマウント
 

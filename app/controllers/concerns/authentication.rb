@@ -40,6 +40,17 @@ module Authentication
       session.delete(:return_to_after_authenticating) || root_url
     end
 
+    # ログインの手順そのもの。パスワードでもパスキーでも同じ経路を通す。
+    # セッション固定攻撃の対策で reset_session し、そこで消える復帰先を**先に**読み出す
+    # (docs/spec/05-auth.md 4 節)
+    def start_authenticated_session_for(user)
+      url = after_authentication_url
+      reset_session
+      start_new_session_for user
+
+      url
+    end
+
     def start_new_session_for(user)
       user.sessions.create!(user_agent: request.user_agent, ip_address: request.remote_ip).tap do |session|
         Current.session = session

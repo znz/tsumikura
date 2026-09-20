@@ -1145,35 +1145,91 @@ Phase 11 からの申し送り (docs/spec/02-forecast.md 14 節)
 
 **作業**
 
-- `webauthn` gem、`passkeys` の migration、`users.webauthn_id`
-- `config/initializers/webauthn.rb`
-- `PasskeysController` (一覧/options/create/destroy) + `Sessions::PasskeysController` (options/create)
-- `passkey_controller.js` (登録/認証)、ログイン画面の conditional UI
+- `webauthn` gem (3.4.3)、`passkeys` の migration、`users.webauthn_id`
+- `config/initializers/webauthn.rb` (`allowed_origins`。production は `APP_HOST` から導出) +
+  `lib/webauthn_origin.rb` (origin の正規化。末尾スラッシュ・空白・不正値で起動を止めない)
+- `WebauthnChallenge` concern (challenge の有効期限 + `Rails.cache` への消費記録)
+- `PasskeysController` (options/create/destroy。**登録は現在のパスワードの再確認つき**) +
+  `Sessions::PasskeysController` (options/create。usernameless)
+- `Authentication#start_authenticated_session_for` (パスワードログインと同じ経路を共有)
+- `passkey_controller.js` (登録) / `passkey_login_controller.js` (認証・conditional UI) /
+  `passkey_codec.js` (base64url。webauthn-json は使わない)
+- `/account` のパスキーのセクション (一覧 / 追加 / 削除)、ログイン画面の「パスキーでログイン」
+- 管理者によるパスワード再設定でパスキーも削除する (乗っ取り対応を兼ねるため)
 - `spec/support/webauthn_helper.rb` (`WebAuthn::FakeClient`)
 
 **TDD TODO**
 
 ```
-- [ ] ログイン済みユーザーは登録オプションを取得できる
-- [ ] FakeClient で作った credential を登録すると Passkey が作られる
-- [ ] challenge が一致しない credential は登録を拒否される
-- [ ] 登録済みのパスキーで usernameless ログインできる
-- [ ] 存在しない external_id でのログインは拒否される
-- [ ] 無効化されたユーザーのパスキーではログインできない
-- [ ] ログイン成功で passkey.last_used_at と sign_count が更新される
-- [ ] パスキーを削除すると、それでログインできなくなる
-- [ ] 未ログインでも /sessions/passkey/options にアクセスできる
+登録 (spec/requests/passkeys_spec.rb)
+- [x] ログイン済みユーザーは登録オプションを取得できる
+- [x] discoverable credential (resident key) を要求している
+- [x] 初回に webauthn_id を生成し、2 回目は変えない
+- [x] 登録済みのパスキーを excludeCredentials に載せる (他人のぶんは載せない)
+- [x] FakeClient で作った credential を登録すると Passkey が作られる
+- [x] 名前が空なら User-Agent から既定の名前を付け、50 文字に切り詰める
+- [x] challenge が一致しない credential は登録を拒否される
+- [x] 生体認証 / PIN を通していない credential は登録を拒否される (user verification 必須)
+- [x] 認証用の options で得た challenge では登録できない (セッションキーの分離)
+- [x] 失敗した試行でも challenge は捨てられる
+- [x] 期限 (5 分) を過ぎた challenge では登録できない / 期限内なら登録できる
+- [x] パスワードの再確認なし (challenge 未発行) では登録できない
+- [x] 現在のパスワードが違うと 401 で challenge を出さない
+- [x] challenge は 1 回限り (同じ credential を送り直せない)
+- [x] 別の origin で作られた credential は拒否される (フィッシング対策)
+- [x] 壊れた credential / パラメータ欠落で 500 にしない
+- [x] 自分のパスキーは削除でき、他人のパスキーは削除できない
+- [x] すでに削除済みのパスキーへの削除でも 404 を見せない
+- [x] パスキーが 0 件でも、登録していてもパスワードでログインできる
+- [x] /account に一覧 (名前・登録日・最終利用) と Stimulus の data 属性が出ている
+
+認証 (spec/requests/sessions/passkeys_spec.rb)
+- [x] 未ログインでも /sessions/passkey/options にアクセスできる
+- [x] allowCredentials を渡さない (usernameless)
+- [x] 登録済みのパスキーで usernameless ログインできる
+- [x] ログイン成功で session_id の cookie (httponly / SameSite=Lax) が出る
+- [x] ログイン成功で Rails セッションがリセットされる (セッション固定攻撃の対策)
+- [x] ログイン前にアクセスしようとした URL に戻る
+- [x] ログイン成功で passkey.last_used_at と sign_count が更新される
+- [x] 存在しない external_id でのログインは拒否される
+- [x] 無効化されたユーザーのパスキーではログインできない
+- [x] 無効化の拒否は、存在しない credential の拒否と区別できない (ユーザー列挙の防止)
+- [x] 生体認証 / PIN を通していない assertion は拒否される (user verification 必須)
+- [x] challenge が未発行 / 一致しない / 使い回しなら拒否される
+- [x] 失敗した試行でも challenge は捨てられる
+- [x] 期限 (15 分) を過ぎた challenge では入れない / 期限内なら入れる
+- [x] 同じ Cookie と assertion の組を送り直しても 2 回目は拒否される (CookieStore 対策)
+- [x] 別の origin から使われた credential は拒否される (フィッシング対策)
+- [x] sign_count が巻き戻った credential は拒否される (クローン検知)
+- [x] パスキーを削除すると、それでログインできなくなる
+- [x] 壊れた credential / パラメータ欠落で 500 にしない
+- [x] ログイン画面にボタンと conditional UI 用の autocomplete が出ている
+
+モデル・認可・管理 (spec/models/passkey_spec.rb ほか)
+- [x] Passkey のバリデーション (credential ID の一意、名前、署名カウンタ)
+- [x] Passkey.parse_credential が投げる例外はすべて VERIFICATION_ERRORS で受けられる
+- [x] credential の id が String でなければ TypeError (find_by に配列を渡さない)
+- [x] WebauthnOrigin.normalize が末尾スラッシュ・パス・空白・不正値を落とす (DB 不要の spec)
+- [x] 無効化してもパスキーは消えない
+- [x] 新しい 3 ルートを authorization_spec の表に足した (未ログインは通さない)
+- [x] 管理者のパスワード再設定で対象ユーザーのパスキーを全部消す (他人のぶんは消さない)
+      (トランザクションの中で「パスワード → パスキー → セッション」の順に潰す)
 
 Phase 12 からの申し送り
-- [ ] WebAuthn のエンドポイント (options / create、特に未ログインで叩ける
+- [x] WebAuthn のエンドポイント (options / create、特に未ログインで叩ける
       /sessions/passkey/options) にも rate_limit を付ける
-- [ ] passkey_controller.js は Phase 12 の push_subscription_controller.js と同じ型にそろえる:
+      (1 つのコントローラに 2 つ置くので `name:` で分ける。options は conditional UI が
+      画面を開くたびに呼ぶので 30 回 / 3 分、create は 10 回 / 3 分)
+- [x] passkey_controller.js は Phase 12 の push_subscription_controller.js と同じ型にそろえる:
       (1) 機能検出 (PublicKeyCredential の有無) → (2) 表示の切り替え (未対応 / 登録済み / 未登録) →
       (3) エラー処理。fetch は **セッション切れのリダイレクト追従**を必ず見る
       (302 に追従したログイン画面の 200 を成功と誤認しない: response.redirected と content-type)
 ```
 
 **動作確認**: 本番の HTTPS 環境でスマホにパスキーを登録し、メール入力なしでログインできる。
+実機でしか確かめられないので、手順を [認証](../spec/05-auth.md#実機での確認手順-https-の本番環境で) に置いた。
+`js: true` の system spec は Chrome DevTools Protocol の Virtual Authenticator が要るので書いていない
+([未決事項](open-questions.md))。
 
 ---
 

@@ -3,6 +3,12 @@
   <%= link_to "ユーザーを追加", new_admin_user_path, class: add_link_classes %>
 </div>
 
+<%# 無効化とパスワード再設定は目的が違う (docs/spec/05-auth.md 5 節) %>
+<p data-deactivation-note class="mt-4 text-sm text-slate-600">
+  <strong>無効化ではパスキーは消えません</strong> (無効化は取り消せるため。無効化中はパスキーでもログインできません)。
+  乗っ取りが疑われるときは、パスキーも一緒に消える<strong>パスワードの再設定</strong>を使ってください。
+</p>
+
 <ul class="mt-6 space-y-3">
   <% @users.each do |user| %>
     <li class="rounded-xl border border-slate-200 bg-white p-4">
@@ -31,7 +37,7 @@
             <%= button_to "再有効化", admin_user_deactivation_path(user), method: :delete, class: secondary_button_classes %>
           <% else %>
             <%= button_to "無効化", admin_user_deactivation_path(user), method: :post,
-                  form: { data: { turbo_confirm: "#{user.name} を無効化します。よろしいですか?" } },
+                  form: { data: { turbo_confirm: "#{user.name} を無効化します。ログインできなくなりますが、登録済みのパスキーは残ります (無効化は取り消せるため)。よろしいですか?" } },
                   class: "min-h-11 rounded-lg border border-red-300 px-3 text-sm text-red-700 hover:bg-red-50" %>
           <% end %>
         <% end %>

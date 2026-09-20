@@ -31,6 +31,40 @@ RSpec.describe "管理者によるパスワード再設定", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
+    # 再設定は「乗っ取られたかもしれない」ときの操作でもある。パスキーを残すと
+    # 攻撃者が登録したパスキーで入り続けられる (docs/spec/05-auth.md 5 節)
+    it "確認画面に削除されるパスキーの件数を出す" do
+      create_list(:passkey, 2, user: member)
+
+      get new_admin_user_password_reset_path(member)
+
+      expect(response.parsed_body.at("[data-passkey-count]").text).to include "2 件"
+    end
+
+    it "再設定すると対象ユーザーのパスキーをすべて削除する" do
+      create_list(:passkey, 2, user: member)
+      other = create(:passkey)
+
+      expect { post admin_user_password_reset_path(member) }.to change(Passkey, :count).by(-2)
+
+      expect(member.reload.passkeys).to be_empty
+      expect(Passkey.exists?(other.id)).to be true
+    end
+
+    it "削除したパスキーの件数を画面に出す" do
+      create_list(:passkey, 2, user: member)
+
+      post admin_user_password_reset_path(member)
+
+      expect(response.parsed_body.at("[data-removed-passkeys]").text).to include "2 件"
+    end
+
+    it "パスキーを持たないユーザーでも再設定できる" do
+      expect { post admin_user_password_reset_path(member) }.not_to raise_error
+
+      expect(response.parsed_body.at("[data-removed-passkeys]")).to be_nil
+    end
+
     it "新しいパスワードが画面に 1 度だけ表示される" do
       post admin_user_password_reset_path(member)
       password = displayed_password

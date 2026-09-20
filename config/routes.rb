@@ -5,6 +5,13 @@ Rails.application.routes.draw do
   # パスワードリセット (PasswordsController) はメール送信手段がないため持たない。
   # 忘れた場合は管理者が /admin/users から再設定する (docs/spec/05-auth.md)
   resource :session, only: %i[ new create destroy ]
+  # パスキーでのログイン (docs/spec/05-auth.md 5 節)。**この 2 つだけが未ログインで叩ける。**
+  # メールアドレスの入力なしでログインするので、URL に誰のものかは出ない
+  namespace :sessions do
+    resource :passkey, only: :create do
+      post :options
+    end
+  end
 
   resource :menu, only: :show
   # 下部タブの中央「＋記録」。アクションシートは JS が要るのでページにする
@@ -66,6 +73,12 @@ Rails.application.routes.draw do
   resources :web_push_subscriptions, only: %i[ create destroy ]
   # テスト送信。購読の属性を変えないので web_push_subscriptions には混ぜない
   resource :notification_test, only: :create
+
+  # パスキーの登録と削除 (docs/spec/05-auth.md 5 節)。
+  # 一覧は /account のセクションが兼ねるので index は持たない
+  resources :passkeys, only: %i[ create destroy ] do
+    post :options, on: :collection
+  end
 
   resource :account, only: %i[ show update ]
   namespace :account do

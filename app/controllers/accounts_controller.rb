@@ -23,6 +23,8 @@ class AccountsController < ApplicationController
       @sessions = login_sessions
       # 通知を受け取る端末 (docs/spec/04-notifications.md 3 節)
       @push_subscriptions = @user.web_push_subscriptions.recent_first
+      # 登録済みのパスキー (docs/spec/05-auth.md 5 節)
+      @passkeys = @user.passkeys.recent_first
     end
 
     def login_sessions

@@ -9,6 +9,11 @@
 <%= render "admin/generated_password", heading: "新しいパスワード", password: @generated_password %>
 
 <p class="mt-4 text-sm text-slate-600">ログイン中のデバイスはすべてログアウトしました。</p>
+<% if @removed_passkey_count.positive? %>
+  <p data-removed-passkeys class="mt-1 text-sm text-slate-600">
+    登録済みのパスキー <%= @removed_passkey_count %> 件も削除しました。アカウント設定から登録し直してもらってください。
+  </p>
+<% end %>
 <p class="mt-1 text-sm text-slate-600">この画面を再読み込みすると、別のパスワードが再発行されます。</p>
 
 <%= link_to "ユーザー一覧に戻る", admin_users_path,

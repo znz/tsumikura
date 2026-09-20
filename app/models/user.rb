@@ -18,6 +18,10 @@ class User < ApplicationRecord
   # 無効化 (deactivated_at) では消さない (無効化は取り消せるため)。
   # 配信側が User.active で落とすので、無効化中は届かない
   has_many :web_push_subscriptions, dependent: :destroy
+  # パスキーは追加の認証手段 (docs/spec/05-auth.md 5 節)。
+  # 無効化 (deactivated_at) では消さない (無効化は取り消せるため)。
+  # ログイン側が無効化を見て断るので、無効化中はパスキーでも入れない
+  has_many :passkeys, dependent: :destroy
 
   enum :role, { member: 0, admin: 1 }, validate: true
 
@@ -42,6 +46,22 @@ class User < ApplicationRecord
 
   def deactivated?
     deactivated_at.present?
+  end
+
+  # WebAuthn の user handle。パスキーの初回登録時に一度だけ生成し、以後は変えない
+  # (変えると同じユーザーの登録済みパスキーが別人のものとして扱われる)。
+  #
+  # update! だと全バリデーションを通すので、無関係な検証エラー (あとから増えた制約など) で
+  # パスキーの登録が 500 になりうる。この列だけを書くので update_column を使う。
+  # 2 つの端末から同時に登録を始めても値が割れないよう行ロックの中で確かめる
+  def ensure_webauthn_id!
+    return webauthn_id if webauthn_id.present?
+
+    with_lock do
+      update_column(:webauthn_id, WebAuthn.generate_user_id) if webauthn_id.blank?
+    end
+
+    webauthn_id
   end
 
   private
