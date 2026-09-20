@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_20_000012) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_000014) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -21,6 +21,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000012) do
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_categories_on_name", unique: true
     t.index ["position"], name: "index_categories_on_position"
+  end
+
+  create_table "item_alert_states", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.bigint "item_id", null: false
+    t.datetime "notified_at"
+    t.string "notified_expiry_status"
+    t.string "notified_purchase_status"
+    t.datetime "updated_at", null: false
+    t.index ["item_id"], name: "index_item_alert_states_on_item_id", unique: true
   end
 
   create_table "item_purposes", force: :cascade do |t|
@@ -387,6 +397,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000012) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  create_table "web_push_subscriptions", force: :cascade do |t|
+    t.string "auth_key", limit: 255, null: false
+    t.datetime "created_at", null: false
+    t.string "endpoint", limit: 2048, null: false
+    t.integer "failure_count", default: 0, null: false
+    t.datetime "last_delivered_at"
+    t.string "p256dh_key", limit: 255, null: false
+    t.datetime "updated_at", null: false
+    t.string "user_agent", limit: 255
+    t.bigint "user_id", null: false
+    t.index ["endpoint"], name: "index_web_push_subscriptions_on_endpoint", unique: true
+    t.index ["user_id"], name: "index_web_push_subscriptions_on_user_id"
+    t.check_constraint "endpoint::text ~~ 'https://%'::text", name: "web_push_subscriptions_https_endpoint"
+  end
+
+  add_foreign_key "item_alert_states", "items", on_delete: :restrict
   add_foreign_key "item_purposes", "items"
   add_foreign_key "items", "categories", on_delete: :nullify
   add_foreign_key "items", "storage_locations", on_delete: :nullify
@@ -417,4 +443,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000012) do
   add_foreign_key "usage_records", "item_purposes", column: ["item_purpose_id", "item_id"], primary_key: ["id", "item_id"], on_delete: :restrict
   add_foreign_key "usage_records", "items"
   add_foreign_key "usage_records", "users", on_delete: :restrict
+  add_foreign_key "web_push_subscriptions", "users", on_delete: :restrict
 end

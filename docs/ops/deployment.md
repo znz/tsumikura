@@ -183,7 +183,25 @@ dokku config:set tsumikura \
 
 `DATABASE_URL` は `dokku postgres:link` が自動設定する。
 
-上記はこの構成で最終的に必要になる環境変数の一覧 (VAPID / WEBAUTHN は Phase 12 / 13 まで不要)。`RAILS_MASTER_KEY` 等の秘密情報をシェル履歴や `ps` に残さずに投入する具体的な手順は [初回デプロイ手順書 3 節](first-deploy.md#3-環境変数) を参照。
+上記はこの構成で最終的に必要になる環境変数の一覧。
+
+| 変数 | 必須 | 用途 |
+|---|---|---|
+| `RAILS_MASTER_KEY` | ○ | `config/credentials.yml.enc` の復号 |
+| `DATABASE_URL` | ○ | `dokku postgres:link` が自動設定する |
+| `RAILS_LOG_LEVEL` / `TZ` / `APP_HOST` | ○ | ログ量・タイムゾーン・ホスト名 |
+| `SOLID_QUEUE_IN_PUMA` / `WEB_CONCURRENCY` / `RAILS_MAX_THREADS` / `JOB_CONCURRENCY` / `DB_POOL` | ○ / 任意 | Puma と Solid Queue の構成 |
+| `VAPID_PUBLIC_KEY` | Web Push を使うなら | ブラウザに渡す公開鍵 (`<meta name="vapid-public-key">` と `pushManager.subscribe`) |
+| `VAPID_PRIVATE_KEY` | Web Push を使うなら | 配信時の JWT 署名。**秘密鍵。ログにもリポジトリにも出さない** |
+| `VAPID_SUBJECT` | Web Push を使うなら | 送信者の連絡先 (`https://...` か `mailto:...`)。未設定なら `mailto:admin@example.com` |
+| `WEBAUTHN_ORIGIN` / `WEBAUTHN_RP_ID` | パスキーを使うなら (Phase 13) | パスキーの検証 |
+
+**`VAPID_*` が未設定でもアプリは起動する** (通知だけが無効になる)。鍵の生成と設定の手順は
+[初回デプロイ手順書 3.1 節](first-deploy.md#31-vapid-鍵-web-push)、
+仕様は [通知](../spec/04-notifications.md#2-vapid-鍵の管理) を参照。
+**鍵をローテーションすると既存の購読がすべて無効になる**ので、生成したら必ずバックアップする。
+
+`WEBAUTHN_*` は Phase 13 まで不要。`RAILS_MASTER_KEY` 等の秘密情報をシェル履歴や `ps` に残さずに投入する具体的な手順は [初回デプロイ手順書 3 節](first-deploy.md#3-環境変数) を参照。
 
 ## 7. 初回デプロイ手順
 

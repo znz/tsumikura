@@ -61,9 +61,18 @@ Rails.application.routes.draw do
   end
   resources :stores, except: :show
 
+  # Web Push の購読 (docs/spec/04-notifications.md 3 節)。
+  # 登録は JS (push_subscription_controller.js) から JSON で、削除は画面のボタンからも行う
+  resources :web_push_subscriptions, only: %i[ create destroy ]
+  # テスト送信。購読の属性を変えないので web_push_subscriptions には混ぜない
+  resource :notification_test, only: :create
+
   resource :account, only: %i[ show update ]
   namespace :account do
     resource :password, only: :update
+    # 通知の種別 ON/OFF (JS 無しで動くフォーム)。
+    # 表示名・メールの更新と permit する列を分けるためコントローラを分ける
+    resource :notification_setting, only: :update
     # ログイン中デバイスの失効。ログアウト (SessionsController#destroy) と分けるため Account 名前空間に置く
     resources :sessions, only: :destroy do
       delete :others, on: :collection
@@ -81,7 +90,10 @@ Rails.application.routes.draw do
   # Can be used by load balancers and uptime monitors to verify that the app is live.
   get "up" => "rails/health#show", as: :rails_health_check
 
-  # Render dynamic PWA files from app/views/pwa/* (remember to link manifest in application.html.erb)
-  # get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
-  # get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
+  # PWA の manifest と service worker (docs/spec/04-notifications.md 1 節)。
+  # Rails::PwaController は ApplicationController を継承しないので認証を通らない。
+  # manifest は「ホーム画面に追加」の前 (= 未ログインでも) 取得できる必要があるため、
+  # これは仕様どおり (spec/requests/pwa_spec.rb で固定している)
+  get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
+  get "service-worker" => "rails/pwa#service_worker", as: :pwa_service_worker
 end

@@ -48,6 +48,94 @@
 </section>
 
 <section class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+  <h2 class="font-bold text-slate-900">通知</h2>
+  <p class="<%= hint_classes %>">
+    要購入・期限の状態が前より悪くなった品目があるときだけ、毎朝 <%= digest_hour %> 時ごろに 1 通だけお知らせします。
+  </p>
+
+  <% if Vapid.configured? %>
+    <%# 購読は端末ごと。ボタンは JS が状態を見てから出す (JS 無しでは何も出ない) %>
+    <div class="mt-4" data-controller="push-subscription"
+         data-push-subscription-url-value="<%= web_push_subscriptions_path %>"
+         data-push-subscription-public-key-value="<%= Vapid.public_key %>">
+      <p data-push-subscription-target="status" role="status" class="text-sm text-slate-700"></p>
+
+      <button type="button" hidden
+              data-push-subscription-target="subscribe"
+              data-action="push-subscription#subscribe"
+              class="<%= primary_button_classes("mt-3") %>">この端末で通知を受け取る</button>
+
+      <button type="button" hidden
+              data-push-subscription-target="unsubscribe"
+              data-action="push-subscription#unsubscribe"
+              class="<%= danger_button_classes("mt-3") %>">この端末の通知をオフにする</button>
+
+      <p hidden data-push-subscription-target="unsupported" class="mt-3 text-sm text-slate-500">
+        このブラウザは Web Push に対応していません。
+      </p>
+
+      <%# iOS はホーム画面に追加するまで通知を許可できない (ブラウザ側の制約) %>
+      <p hidden data-push-subscription-target="ios" class="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+        iPhone・iPad では、共有メニューから<strong>「ホーム画面に追加」</strong>して、
+        追加されたアイコンから開いたあとに通知をオンにしてください。
+      </p>
+    </div>
+
+    <%= button_to "テスト送信", notification_test_path, class: secondary_button_classes("mt-3 w-full") %>
+  <% else %>
+    <p data-vapid-missing class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+      サーバに通知の鍵が設定されていません。管理者が VAPID の鍵を設定すると使えるようになります。
+    </p>
+  <% end %>
+
+  <%# 知らせる種別は端末の購読とは別の軸。JS 無しで動くふつうのフォームにする %>
+  <%= form_with model: @user, url: account_notification_setting_path, method: :patch, class: "mt-5" do |form| %>
+    <fieldset>
+      <legend class="text-sm font-medium text-slate-700">知らせてほしいこと</legend>
+
+      <label class="mt-1 flex min-h-11 items-center gap-2">
+        <%= form.check_box :notify_purchases, class: "size-5 rounded border-slate-300" %>
+        <span class="text-sm text-slate-900">購入のお知らせ (そろそろ購入・購入推奨)</span>
+      </label>
+
+      <label class="flex min-h-11 items-center gap-2">
+        <%= form.check_box :notify_expiries, class: "size-5 rounded border-slate-300" %>
+        <span class="text-sm text-slate-900">期限のお知らせ (期限間近・期限切れ)</span>
+      </label>
+    </fieldset>
+
+    <%= form.submit "通知の設定を保存", class: primary_button_classes("mt-3") %>
+  <% end %>
+
+  <h3 class="mt-6 font-bold text-slate-900">通知を受け取る端末</h3>
+
+  <% if @push_subscriptions.any? %>
+    <ul class="mt-2 divide-y divide-slate-200" aria-label="通知を受け取る端末">
+      <% @push_subscriptions.each do |subscription| %>
+        <li class="flex items-center justify-between gap-2 py-3">
+          <div class="min-w-0">
+            <%# endpoint は端末を特定できる値なので画面には出さない %>
+            <p class="truncate text-sm text-slate-900"><%= push_device_label(subscription.user_agent) %></p>
+            <p class="truncate text-sm text-slate-500">
+              <% if subscription.last_delivered_at %>
+                最終配信 <%= l subscription.last_delivered_at %>
+              <% else %>
+                まだ配信していません
+              <% end %>
+            </p>
+          </div>
+
+          <%= button_to "削除", web_push_subscription_path(subscription), method: :delete,
+                class: secondary_button_classes("shrink-0") %>
+        </li>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="<%= hint_classes %>">まだ登録されていません。</p>
+  <% end %>
+</section>
+
+<section class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
   <h2 class="font-bold text-slate-900">ログイン中のデバイス</h2>
 
   <ul class="mt-4 divide-y divide-slate-200">

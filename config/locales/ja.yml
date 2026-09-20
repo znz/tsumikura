@@ -57,6 +57,8 @@ ja:
       stock_take: 棚卸
       stock_take_entry: 棚卸の明細
       shopping_list_item: 買い物リストの行
+      web_push_subscription: 通知の購読
+      item_alert_state: 通知の状態
     attributes:
       category:
         name: 名前
@@ -165,6 +167,14 @@ ja:
         ip_address: IP アドレス
         user_agent: ブラウザ
         created_at: ログイン日時
+      web_push_subscription:
+        user: ユーザー
+        endpoint: 通知の宛先
+        p256dh_key: 公開鍵
+        auth_key: 認証キー
+        user_agent: ブラウザ
+        last_delivered_at: 最終配信
+        failure_count: 失敗回数
     errors:
       models:
         user:

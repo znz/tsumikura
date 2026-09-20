@@ -2,14 +2,14 @@ class AccountsController < ApplicationController
   before_action :set_user
 
   def show
-    @sessions = login_sessions
+    load_show
   end
 
   def update
     if @user.update(account_params)
       redirect_to account_path, notice: "アカウント情報を更新しました。"
     else
-      @sessions = login_sessions
+      load_show
       render :show, status: :unprocessable_content
     end
   end
@@ -17,6 +17,12 @@ class AccountsController < ApplicationController
   private
     def set_user
       @user = Current.user
+    end
+
+    def load_show
+      @sessions = login_sessions
+      # 通知を受け取る端末 (docs/spec/04-notifications.md 3 節)
+      @push_subscriptions = @user.web_push_subscriptions.recent_first
     end
 
     def login_sessions

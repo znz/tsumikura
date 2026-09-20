@@ -110,14 +110,20 @@ passkeys
   timestamps
 
 web_push_subscriptions
-  id, user_id (fk not null)
+  id, user_id (fk not null, on_delete: restrict)
   endpoint          string not null unique  # 通常 200-500 バイト。string(2048) + unique index
-  p256dh_key        string not null
-  auth_key          string not null
-  user_agent        string
+                                            # check: endpoint LIKE 'https://%'
+                                            # モデルは ASCII + 既知の Push サービスのホスト (443) に絞る
+  p256dh_key        string not null         # string(255)。デコードして 65 バイト・先頭 0x04
+  auth_key          string not null         # string(255)。デコードして 16 バイト
+  user_agent        string                  # string(255)。長い値は切り詰めて保存する
   last_delivered_at datetime
   failure_count     integer not null default 0
   timestamps
+  # endpoint は端末 + ブラウザに 1 つ。同じ端末で別の家族がログインしたら user_id を付け替える
+  # (行は増やさない)。1 ユーザー 20 件まで (超えたら古い方から消す)。
+  # ユーザーの無効化では購読を消さない (無効化は取り消せるため。配信側が User.active で落とす)。
+  # docs/spec/04-notifications.md 3 節
 ```
 
 ### マスタ
@@ -314,11 +320,17 @@ shopping_list_items                   # 手動追加 / 上書き / チェック�
 item_alert_states                     # Web Push の重複通知防止
   id
   item_id                  fk not null unique
-  notified_purchase_status integer     # 前回通知した要購入ステータス
-  notified_expiry_status   integer     # 前回通知した期限ステータス
-  notified_at              datetime
+  notified_purchase_status string      # 前回突き合わせた要購入ステータス ("urgent" など)
+  notified_expiry_status   string      # 前回突き合わせた期限ステータス ("expired" など)
+  notified_at              datetime    # 最後に突き合わせた時刻 (送らなかった日も更新する)
   timestamps
 ```
+
+- ステータスの 2 列は **integer ではなく string** にした。判定の `status` は Symbol で、enum の
+  整数に写すとどちらの順位表 (要購入 / 期限) の何番かが DB からは読めなくなる。文字列なら
+  `ja.forecast.status` / `ja.expiry.status` のキーとそのまま一致し、`Forecast::Calculator::RANK` /
+  `Expiry::Status::RANK` で比べられる ([予測](02-forecast.md) 14 節 / [通知](04-notifications.md) 4 節)。
+- `item_id` の外部キーは `on_delete: :restrict`。アーカイブ済みの品目の行は日次ジョブが消す。
 
 日付の列 (`lots.acquired_on` / `stock_movements.occurred_on` / `usage_records.used_on` / `stock_takes.counted_on`) には**未来の日付を指定できない** (モデルのバリデーション)。過去日は自由に指定できる。消費イベントが必ず今日以前にあることを、[予測](02-forecast.md) が前提にしている。
 

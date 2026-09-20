@@ -4,5 +4,9 @@
 # Use this to limit dissemination of sensitive information.
 # See the ActiveSupport::ParameterFilter documentation for supported notations and behaviors.
 Rails.application.config.filter_parameters += [
-  :passw, :email, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn, :cvv, :cvc
+  :passw, :email, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn, :cvv, :cvc,
+  # Web Push の購読 (docs/spec/04-notifications.md 3 節)。endpoint は端末を特定できる URL で、
+  # p256dh / auth は通知を復号するための鍵なので、ログに残さない
+  # (:_key が p256dh_key / auth_key を、:auth が JS から来る keys.auth を拾う)
+  :endpoint, :p256dh, :auth
 ]

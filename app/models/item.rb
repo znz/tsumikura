@@ -24,6 +24,10 @@ class Item < ApplicationRecord
   # 買い物リストの永続行 (品目 1 件につき 1 行)。外部キーは restrict なので、
   # 品目を物理削除するときはこちらを先に消す
   has_one :shopping_list_item, dependent: :destroy
+  # 日次ダイジェストの「前回突き合わせた状態」(品目 1 件につき 1 行)。
+  # これも外部キーが restrict なので、宣言しないと 1 度ダイジェストが走っただけで
+  # item.destroy が外部キー違反になる
+  has_one :item_alert_state, dependent: :destroy
 
   # prefix は必須。付けないと none が AR の Item.none (空スコープ) と衝突し、
   # Rails がクラスロード時に ArgumentError を出す。

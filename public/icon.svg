@@ -1,3 +1,8 @@
-<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="256" cy="256" r="256" fill="red"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="つみくら">
+  <!-- 暫定のアイコン。「つ」の 1 文字だけの単純な図形にしてある。
+       デザインしたアイコン (512px / 192px の PNG を含む) に差し替える予定
+       (docs/plan/open-questions.md) -->
+  <rect width="512" height="512" rx="112" fill="#5B7C5A"/>
+  <path d="M150 178c22-34 62-52 104-52 58 0 104 36 104 88 0 62-52 100-114 136-14 8-30 14-46 18"
+        fill="none" stroke="#FAF8F3" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

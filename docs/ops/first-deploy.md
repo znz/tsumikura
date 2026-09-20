@@ -106,7 +106,48 @@ ssh -t dokku@<Dokku サーバのホスト名> config:set --no-restart tsumikura 
 - `SOLID_QUEUE_IN_PUMA=1`: Puma に Solid Queue の supervisor を同居させる ([デプロイ構成](deployment.md#2-ジョブの実行-solid_queue_in_puma))。
 - `WEB_CONCURRENCY=0`: Puma を single mode にする (ワーカープロセスなし)。
 - `RAILS_MAX_THREADS=3`: Puma のスレッド数。`config/database.yml` の `max_connections` はこの値に Solid Queue supervisor 分の余裕 (+2) を足した数を既定にしている (`DB_POOL` で明示上書きできる。[デプロイ構成](deployment.md#2-ジョブの実行-solid_queue_in_puma))。
-- `VAPID_*` (Web Push) と `WEBAUTHN_*` (パスキー) は**後で設定する** (それぞれ Phase 12 / Phase 13 で必要になったときに `dokku config:set` を追加実行する)。今は設定不要。
+- `WEBAUTHN_*` (パスキー) は**後で設定する** (Phase 13 で必要になったときに `dokku config:set` を追加実行する)。今は設定不要。
+- `VAPID_*` (Web Push) は次の 3.1 節で設定する。初回デプロイ前に入れておくと、デプロイ直後から通知を試せる。
+
+### 3.1 VAPID 鍵 (Web Push)
+
+**鍵は手元で生成する。** サーバで生成すると、控えを取り損ねたときに復元できない
+([通知](../spec/04-notifications.md#2-vapid-鍵の管理))。
+
+```bash
+# 手元のリポジトリで (1 回だけ)
+mise x -- ruby -rweb_push -e 'p WebPush.generate_key.to_h'
+# => {:public_key=>"BN...=", :private_key=>"7p...="}
+```
+
+**出力された 2 つの値をすぐにパスワードマネージャへ退避する。**
+`VAPID_PRIVATE_KEY` は秘密鍵なので、リポジトリにもチャットにも貼らない。
+
+サーバ側で、貼り付けて設定する (`read -rs` なので画面にも履歴にも残らない)。
+まだデプロイしていない段階なら `--no-restart` を付ける。デプロイ後に追加するときは外す
+(アプリを再起動して初期化子に読ませる必要がある)。
+
+```bash
+: "${APP_HOST:?先に export APP_HOST=... を実行すること}"
+read -rs VAPID_PUBLIC_KEY    # 生成した public_key を貼り付けて Enter
+read -rs VAPID_PRIVATE_KEY   # 生成した private_key を貼り付けて Enter
+dokku config:set tsumikura \
+  VAPID_PUBLIC_KEY="$VAPID_PUBLIC_KEY" \
+  VAPID_PRIVATE_KEY="$VAPID_PRIVATE_KEY" \
+  VAPID_SUBJECT="https://$APP_HOST"
+unset VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
+```
+
+- `VAPID_SUBJECT` は Push サービスが送信者を問い合わせるための連絡先。`https:` か `mailto:` のどちらか。
+- **鍵をローテーションすると既存の購読がすべて無効になる** (配信が 401 になり、家族全員が
+  `/account` で登録し直すことになる)。安易に作り直さない。
+- 鍵が未設定でもアプリは起動する。`/account` の通知セクションが
+  「サーバに通知の鍵が設定されていません。」になるだけなので、後から設定してもよい。
+
+> **アイコンの差し替えが残っている**: `public/icon.png` は Rails 既定のアイコンのままで、
+> `public/icon.svg` は暫定の簡易アイコン。ホーム画面に追加したときの見た目が「つみくら」の
+> ものにならないので、512px / 192px の PNG を用意して差し替えること
+> ([未決事項](../plan/open-questions.md))。
 
 ## 4. ドメイン設定、永続ストレージのマウント
 

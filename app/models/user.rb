@@ -14,6 +14,10 @@ class User < ApplicationRecord
 
   has_secure_password
   has_many :sessions, dependent: :destroy
+  # 端末ごとの Web Push の購読 (docs/spec/04-notifications.md 3 節)。
+  # 無効化 (deactivated_at) では消さない (無効化は取り消せるため)。
+  # 配信側が User.active で落とすので、無効化中は届かない
+  has_many :web_push_subscriptions, dependent: :destroy
 
   enum :role, { member: 0, admin: 1 }, validate: true
 

@@ -1085,26 +1085,57 @@ Phase 10 からの申し送り (docs/spec/02-forecast.md 14 節)
 **TDD TODO**
 
 ```
-- [ ] 購読を登録すると WebPushSubscription が作られる
-- [ ] 同じ endpoint で 2 回購読しても行は 1 件のまま (upsert)
-- [ ] 配信で ExpiredSubscription が起きたら購読が削除される
-- [ ] DailyDigestJob は状態が悪化した品目が 0 件なら何も送らない
-- [ ] ok -> urgent に悪化した品目があれば 1 通送る
-- [ ] 同じ品目が 2 日連続で urgent なら 2 日目は送らない
-- [ ] urgent -> ok -> urgent と戻ると再度送られる
-- [ ] notify_purchases が false のユーザーには要購入の通知を送らない
-- [ ] 送信後に item_alert_states が現在値で更新される
+- [x] 購読を登録すると WebPushSubscription が作られる
+- [x] 同じ endpoint で 2 回購読しても行は 1 件のまま (upsert)
+- [x] 配信で ExpiredSubscription が起きたら購読が削除される
+- [x] DailyDigestJob は状態が悪化した品目が 0 件なら何も送らない
+- [x] ok -> urgent に悪化した品目があれば 1 通送る
+- [x] 同じ品目が 2 日連続で urgent なら 2 日目は送らない
+- [x] urgent -> ok -> urgent と戻ると再度送られる
+- [x] notify_purchases が false のユーザーには要購入の通知を送らない
+- [x] 送信後に item_alert_states が現在値で更新される
 
 Phase 10 からの申し送り (docs/spec/02-forecast.md 14 節)
-- [ ] 悪化の判定は status だけを比べる (days_left は毎日動くので差分で通知すると毎日鳴る)。
+- [x] 悪化の判定は status だけを比べる (days_left は毎日動くので差分で通知すると毎日鳴る)。
       向きは Forecast::Calculator::RANK / Expiry::Status::RANK
-- [ ] status は Symbol なので item_alert_states には文字列で保存して文字列で比べる
-- [ ] today はジョブで 1 回だけ取って BatchForecaster / Expiry::Evaluator に渡す
+- [x] status は Symbol なので item_alert_states には文字列で保存して文字列で比べる
+- [x] today はジョブで 1 回だけ取って BatchForecaster / Expiry::Evaluator に渡す
       (today に渡せるのは Date.current 以降だけ)
-- [ ] Expiry::Evaluator.call もアーカイブ済みを落とすので、ジョブ側で除外しなくてよい
+- [x] Expiry::Evaluator.call もアーカイブ済みを落とすので、ジョブ側で除外しなくてよい
+
+Phase 11 からの申し送り (docs/spec/02-forecast.md 14 節)
+- [x] 買い物リストの古い永続行の掃除 (ShoppingListItem.purge_stale!) を日次ジョブで呼ぶ
+      (ジョブは分けず DailyDigestJob の先頭で呼ぶ。判定の前に掃除する)
+- [x] 見送り中 (snoozed_until >= today) の品目は要購入の通知から除く。期限の通知からは除かない
+
+追加で固定したこと
+- [x] 401 / 403 (VAPID の不一致) では購読を消さずログだけ残す (410 / 404 は消す)
+- [x] 429 / 5xx は retry_on で指数バックオフ (最大 3 回)
+- [x] 無効化されたユーザーには送らない / アーカイブ済み品目は通知にも状態にも残さない
+- [x] 鍵が未設定でもアプリは動く (通知セクションは案内だけ、ジョブは黙って終わる)
+- [x] endpoint / p256dh / auth はログにも画面にも出さない
+- [x] manifest / service-worker は未ログインでも取得できる (Rails::PwaController)
+- [x] 悪化の判定は DB 非依存の PORO (Notifications::Digest) に切り出して spec_helper で回す
+
+査読の反映
+- [x] ネットワークの失敗 (タイムアウト / DNS / TLS) も retry_on に載せ、タイムアウトを短く指定する
+      (朝 8 時に一瞬途切れただけで、その日の悪化が二度と通知されなくなるのを防ぐ)
+- [x] 再送を諦めたら例外を上げず警告ログだけにする (failed_executions をためない)
+- [x] endpoint は既知の Push サービスのホストの許可リストで絞る (blind SSRF と増幅を防ぐ)
+- [x] p256dh は 65 バイトの非圧縮点、auth は 16 バイト。配信時の暗号化の失敗ではその購読を消す
+- [x] 購読の登録とテスト送信に rate_limit、1 ユーザーの購読は 20 件まで (古い方から消す)
+- [x] Service Worker: active を待ってから subscribe / navigate をやめて openWindow / 同一オリジンの確認 /
+      push の JSON の失敗でも必ず通知を出す
+- [x] 見送り中の品目の要購入ステータスは**前回値のまま据え置いて**記録する
+      (現在値で記録すると、見送りが切れても二度と通知されない)
+- [x] 本文はステータスごとの内訳にする (soon を「購入推奨」と言わない)
+- [x] Item に has_one :item_alert_state, dependent: :destroy (外部キーが restrict のため)
 ```
 
-**動作確認**: 本番にデプロイし、スマホをホーム画面に追加してテスト送信が届く。
+**動作確認**: 本番にデプロイし、スマホをホーム画面に追加してテスト送信が届く
+(手順は [通知](../spec/04-notifications.md#7-実機でしか確かめられないこと) の 7 節)。
+
+**残り**: アイコン画像 (512px / 192px の PNG) の差し替え。[未決事項](open-questions.md)。
 
 ---
 
@@ -1132,6 +1163,14 @@ Phase 10 からの申し送り (docs/spec/02-forecast.md 14 節)
 - [ ] ログイン成功で passkey.last_used_at と sign_count が更新される
 - [ ] パスキーを削除すると、それでログインできなくなる
 - [ ] 未ログインでも /sessions/passkey/options にアクセスできる
+
+Phase 12 からの申し送り
+- [ ] WebAuthn のエンドポイント (options / create、特に未ログインで叩ける
+      /sessions/passkey/options) にも rate_limit を付ける
+- [ ] passkey_controller.js は Phase 12 の push_subscription_controller.js と同じ型にそろえる:
+      (1) 機能検出 (PublicKeyCredential の有無) → (2) 表示の切り替え (未対応 / 登録済み / 未登録) →
+      (3) エラー処理。fetch は **セッション切れのリダイレクト追従**を必ず見る
+      (302 に追従したログイン画面の 200 を成功と誤認しない: response.redirected と content-type)
 ```
 
 **動作確認**: 本番の HTTPS 環境でスマホにパスキーを登録し、メール入力なしでログインできる。

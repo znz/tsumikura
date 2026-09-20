@@ -38,6 +38,9 @@ gem "thruster", require: false
 # 日本語の Rails 標準ロケールを追加
 gem "rails-i18n"
 
+# Web Push (VAPID) で要購入・期限の日次ダイジェストを送る [https://github.com/pushpad/web-push]
+gem "web-push"
+
 # json 3 は JSON.parse のオプションをキーワード引数でしか受けず、ハッシュを位置引数で渡す
 # ActiveSupport 8.1.3 の JSON.decode (署名付き Cookie / セッションの読み出し) が ArgumentError になる。
 # Rails 側が対応したら外す

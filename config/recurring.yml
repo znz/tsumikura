@@ -9,7 +9,16 @@
 #     priority: 2
 #     schedule: at 5am every day
 
+# development / test では走らせない (家の PC を開いた朝に通知が飛ばないように)。
+# 手で試すときは bin/rails runner 'DailyDigestJob.perform_now'
 production:
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12
+  # 日次ダイジェスト (docs/spec/04-notifications.md 4 節)。
+  # cron の末尾にタイムゾーンを書いて JST の 8 時に固定する (Fugit が解釈する)。
+  # コンテナの TZ や config.time_zone の解決順に依存させない
+  daily_digest:
+    class: DailyDigestJob
+    queue: default
+    schedule: "0 8 * * * Asia/Tokyo"

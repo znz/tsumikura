@@ -97,7 +97,15 @@ authenticated_actions = [
   [ "店舗の削除", :delete, -> { store_path(store) }, -> { {} } ],
 
   [ "メニュー", :get, -> { menu_path }, -> { {} } ],
-  [ "記録メニュー", :get, -> { record_menu_path }, -> { {} } ]
+  [ "記録メニュー", :get, -> { record_menu_path }, -> { {} } ],
+
+  [ "通知の購読", :post, -> { web_push_subscriptions_path },
+    -> { { web_push_subscription: { endpoint: push_endpoint("authorization-new"),
+                                    p256dh: push_p256dh, auth: push_auth } } } ],
+  [ "通知の購読の削除", :delete, -> { web_push_subscription_path(web_push_subscription) }, -> { {} } ],
+  [ "通知のテスト送信", :post, -> { notification_test_path }, -> { {} } ],
+  [ "通知の種別の更新", :patch, -> { account_notification_setting_path },
+    -> { { user: { notify_purchases: "0", notify_expiries: "0" } } } ]
 ]
 
 RSpec.describe "品目とマスタの認可", type: :request do
@@ -114,6 +122,8 @@ RSpec.describe "品目とマスタの認可", type: :request do
   let(:stock_take) { create(:stock_take, note: "もとの棚卸") }
   # まとめ購入の対象になるチェック済みの行
   let(:shopping_list_item) { create(:shopping_list_item, :checked, item: item, added_by: create(:user)) }
+  # 通知の購読は**他人のもの**を置く (消せないことを確かめるため)
+  let(:web_push_subscription) { create(:web_push_subscription, endpoint: push_endpoint("authorization-other")) }
   let(:category) { create(:category, name: "もとのカテゴリ") }
   let(:storage_location) { create(:storage_location, name: "もとの保管場所") }
   let(:store) { create(:store, name: "もとの店舗") }
@@ -137,6 +147,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
       usage_records lots disposals
       stock_takes stock_takes/finalizations
       shopping_lists shopping_list_items purchases
+      web_push_subscriptions notification_tests account/notification_settings
       item_purposes item_purposes/positions item_purposes/archives
       categories categories/positions
       storage_locations storage_locations/positions
@@ -174,13 +185,14 @@ RSpec.describe "品目とマスタの認可", type: :request do
       disposal
       stock_take
       shopping_list_item
+      web_push_subscription
       category
       storage_location
       store
 
       expect { request_all_actions }.not_to change {
         [ Item.count, Lot.count, StockMovement.count, UsageRecord.count, ItemPurpose.count,
-          StockTake.count, StockTakeEntry.count, ShoppingListItem.count,
+          StockTake.count, StockTakeEntry.count, ShoppingListItem.count, WebPushSubscription.count,
           Category.count, StorageLocation.count, Store.count ]
       }
     end
@@ -194,6 +206,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
       disposal
       stock_take
       shopping_list_item
+      web_push_subscription
 
       request_all_actions
 
@@ -207,6 +220,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
       expect(shopping_list_item.reload).to be_checked
       expect(shopping_list_item.quantity).to be_nil
       expect(item.current_quantity).to eq 2
+      expect(WebPushSubscription.exists?(web_push_subscription.id)).to be true
       expect(category.reload.name).to eq "もとのカテゴリ"
       expect(storage_location.reload.name).to eq "もとの保管場所"
       expect(store.reload.name).to eq "もとの店舗"
