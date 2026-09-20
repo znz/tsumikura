@@ -8,10 +8,11 @@ ja:
     formats:
       default: "%Y/%m/%d %H:%M"
 
-  # 廃棄の入力フォーム (DB のテーブルを持たない ActiveModel)
+  # 廃棄・まとめ購入の入力フォーム (DB のテーブルを持たない ActiveModel)
   activemodel:
     models:
       disposal: 廃棄の記録
+      purchase: まとめ購入
     attributes:
       disposal:
         quantity: 数量
@@ -19,6 +20,9 @@ ja:
         lot_id: ロット
         disposal_reason: 理由
         note: メモ
+      purchase:
+        acquired_on: 購入日
+        store_id: 店舗
     errors:
       models:
         disposal:
@@ -29,6 +33,14 @@ ja:
               # 廃棄は「実物を捨てた」記録なので、在庫記録を超える廃棄は作らない
               exceeds_lot: は、このロットの残り (%{remaining}) より多くできません
               exceeds_stock: は、在庫の記録 (%{available}) より多くできません
+        purchase:
+          attributes:
+            acquired_on:
+              future: に未来の日付は指定できません
+            base:
+              # 行ごとの詳しいエラーはその行のすぐ下に出すので、ここではどの行かだけを伝える
+              line_invalid: "「%{name}」の入力を確認してください"
+              no_lines: 買い物リストでチェックした品目がありません
 
   activerecord:
     models:
@@ -44,6 +56,7 @@ ja:
       usage_record: 使用の記録
       stock_take: 棚卸
       stock_take_entry: 棚卸の明細
+      shopping_list_item: 買い物リストの行
     attributes:
       category:
         name: 名前
@@ -130,6 +143,14 @@ ja:
         expected_quantity: 記録在庫
         counted_quantity: 実数
         difference: 差分
+      shopping_list_item:
+        item: 品目
+        item_id: 品目
+        free_text: 自由入力
+        quantity: 希望数量
+        checked_at: チェック
+        snoozed_until: 見送り
+        added_by: 追加した人
       user:
         name: 表示名
         email_address: メールアドレス

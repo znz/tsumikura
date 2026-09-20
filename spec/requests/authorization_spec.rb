@@ -58,6 +58,19 @@ authenticated_actions = [
     -> { { lot: { acquired_on: Date.current.to_s, initial_quantity: "99" } } } ],
   [ "購入の記録の削除", :delete, -> { lot_path(lot) }, -> { {} } ],
 
+  [ "買い物リスト", :get, -> { shopping_list_path }, -> { {} } ],
+  [ "買い物リストへの追加", :post, -> { shopping_list_items_path },
+    -> { { shopping_list_item: { free_text: "しんき" } } } ],
+  [ "買い物リストの行の更新", :patch, -> { shopping_list_item_path(shopping_list_item) },
+    -> { { shopping_list_item: { quantity: "9" } } } ],
+  [ "買い物リストの行の削除", :delete, -> { shopping_list_item_path(shopping_list_item) },
+    -> { {} } ],
+
+  [ "まとめ購入のフォーム", :get, -> { new_purchase_path }, -> { {} } ],
+  [ "まとめ購入の記録", :post, -> { purchases_path },
+    -> { { purchase: { acquired_on: Date.current.to_s,
+                       lines: { shopping_list_item.id.to_s => { initial_quantity: "1" } } } } } ],
+
   [ "カテゴリ一覧", :get, -> { categories_path }, -> { {} } ],
   [ "カテゴリの追加フォーム", :get, -> { new_category_path }, -> { {} } ],
   [ "カテゴリの追加", :post, -> { categories_path }, -> { { category: { name: "しんき" } } } ],
@@ -99,6 +112,8 @@ RSpec.describe "品目とマスタの認可", type: :request do
     }).movements.sole
   end
   let(:stock_take) { create(:stock_take, note: "もとの棚卸") }
+  # まとめ購入の対象になるチェック済みの行
+  let(:shopping_list_item) { create(:shopping_list_item, :checked, item: item, added_by: create(:user)) }
   let(:category) { create(:category, name: "もとのカテゴリ") }
   let(:storage_location) { create(:storage_location, name: "もとの保管場所") }
   let(:store) { create(:store, name: "もとの店舗") }
@@ -121,6 +136,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
       items items/archives items/quick_uses
       usage_records lots disposals
       stock_takes stock_takes/finalizations
+      shopping_lists shopping_list_items purchases
       item_purposes item_purposes/positions item_purposes/archives
       categories categories/positions
       storage_locations storage_locations/positions
@@ -157,13 +173,14 @@ RSpec.describe "品目とマスタの認可", type: :request do
       usage_record
       disposal
       stock_take
+      shopping_list_item
       category
       storage_location
       store
 
       expect { request_all_actions }.not_to change {
         [ Item.count, Lot.count, StockMovement.count, UsageRecord.count, ItemPurpose.count,
-          StockTake.count, StockTakeEntry.count,
+          StockTake.count, StockTakeEntry.count, ShoppingListItem.count,
           Category.count, StorageLocation.count, Store.count ]
       }
     end
@@ -176,6 +193,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
       usage_record
       disposal
       stock_take
+      shopping_list_item
 
       request_all_actions
 
@@ -186,6 +204,8 @@ RSpec.describe "品目とマスタの認可", type: :request do
       expect(purpose).not_to be_archived
       expect(usage_record.reload.quantity).to eq 2
       expect(stock_take.reload.finalized_at).to be_nil
+      expect(shopping_list_item.reload).to be_checked
+      expect(shopping_list_item.quantity).to be_nil
       expect(item.current_quantity).to eq 2
       expect(category.reload.name).to eq "もとのカテゴリ"
       expect(storage_location.reload.name).to eq "もとの保管場所"

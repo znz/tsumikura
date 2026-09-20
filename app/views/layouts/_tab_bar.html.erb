@@ -1,8 +1,9 @@
 <%#
   下部固定の 5 タブ (docs/spec/03-screens.md 1 節)。
   中央の「＋記録」はアクションシート (JS が要る) ではなく記録メニューのページに送る。
-  買い物は Phase 11 で作るため、リンクにせず無効表示にする
-  (存在しないルートヘルパーを呼ばない)。
+  「買い物」に要購入の件数バッジは付けない。数えるには毎ページで
+  Forecast::BatchForecaster を走らせることになり、全画面のクエリが増えるため
+  (docs/spec/03-screens.md 1 節)。
 %>
 <% item_class = "flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 py-2 text-xs font-medium" %>
 <nav class="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]"
@@ -35,9 +36,12 @@
     </li>
 
     <li class="flex-1">
-      <span class="<%= item_class %> text-slate-300" role="link" aria-disabled="true">
-        買い物<span class="sr-only"> (準備中)</span>
-      </span>
+      <%# 買い物リストとまとめ購入でハイライトする %>
+      <%= link_to shopping_list_path,
+            class: "#{item_class} #{shopping_tab_current? ? 'text-blue-600' : 'text-slate-600'}",
+            aria: { current: ("page" if shopping_tab_current?) } do %>
+        買い物
+      <% end %>
     </li>
 
     <li class="flex-1">

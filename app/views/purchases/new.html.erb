@@ -1,0 +1,62 @@
+<% content_for :title, "まとめ購入" %>
+
+<p class="text-sm">
+  <%= link_to "← 買い物リスト", shopping_list_path, class: "text-blue-600 underline" %>
+</p>
+
+<h1 class="mt-2 text-2xl font-bold text-slate-900">購入として記録</h1>
+<p class="<%= hint_classes %>">
+  チェックした <%= @purchase.lines.size %> 件をまとめて記録します。
+  購入日と店舗は共通で、数量と金額は品目ごとに入れます。
+</p>
+
+<%= form_with url: purchases_path, method: :post, class: "mt-6 space-y-5" do %>
+  <%= render "form_errors", record: @purchase %>
+
+  <div>
+    <%= label_tag "purchase_acquired_on", Lot.human_attribute_name(:acquired_on), class: label_classes %>
+    <%# 未来日は記録できない (docs/spec/01-domain-model.md 2 節)。
+        基準日は 1 リクエストにつき 1 回取った @today で、サーバ側の検証とそろえる %>
+    <%= date_field_tag "purchase[acquired_on]", @purchase.acquired_on, id: "purchase_acquired_on",
+          max: @today, required: true, class: field_classes %>
+  </div>
+
+  <div>
+    <%= label_tag "purchase_store_id", Lot.human_attribute_name(:store), class: label_classes %>
+    <%= select_tag "purchase[store_id]",
+          options_from_collection_for_select(@stores, :id, :name, @purchase.store_id),
+          include_blank: "未設定", id: "purchase_store_id", class: field_classes %>
+  </div>
+
+  <ul class="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-4"
+      aria-label="購入する品目">
+    <% @purchase.lines.each do |line| %>
+      <%= render "purchases/line", line: line %>
+    <% end %>
+  </ul>
+
+  <%#
+    自由入力は品目が無いので在庫に記録できない。買ったものとしてリストからは消すが、
+    消すのは**この画面に出ていた行だけ**にする (開いている間に家族がチェックした行を
+    見ないまま消さないよう、id を hidden で持ち回る)。
+  %>
+  <% if @free_text_entries.any? %>
+    <section class="rounded-xl border border-amber-200 bg-amber-50 p-4" aria-label="在庫に記録されない行">
+      <h2 class="font-bold text-slate-900">在庫には記録されません</h2>
+      <p class="mt-1 text-sm text-slate-700">
+        次の <%= @free_text_entries.size %> 件は品目マスタにない自由入力です。
+        記録すると在庫は変わらず、買い物リストからは消えます。
+      </p>
+      <ul class="mt-2 list-inside list-disc text-sm text-slate-700" aria-label="自由入力の品目">
+        <% @free_text_entries.each do |entry| %>
+          <li>
+            <%= entry.free_text %>
+            <%= hidden_field_tag "purchase[free_text_ids][]", entry.id, id: nil %>
+          </li>
+        <% end %>
+      </ul>
+    </section>
+  <% end %>
+
+  <%= submit_tag "購入を記録", class: primary_button_classes %>
+<% end %>

@@ -969,32 +969,100 @@ Phase 9 からの申し送り (docs/spec/01-domain-model.md 5 節)
 
 **作業**
 
-- `shopping_list_items` の migration とモデル
-- `ShoppingLists::Builder` (導出 + 永続行のマージ)
+- `shopping_list_items` の migration とモデル (`added_manually` 列を追加した。判断 5 参照)
+- `ShoppingLists::Merger` / `Row` / `List` (DB に触らない PORO) と `ShoppingLists::Builder` (読み込み)
 - `ShoppingListsController` / `ShoppingListItemsController`
-- `PurchasesController#new/create` (チェック済みからまとめて Lot 作成)
-- スヌーズ、手動追加 (自由入力)
+- `PurchasesController#new/create` + `Purchase` / `Purchase::Line` (フォーム) +
+  `Stock::RecordBulkPurchase` (`Stock::RecordPurchase.call!` を入れ子で呼ぶ)
+- スヌーズ、手動追加 (自由入力と品目詳細からの追加)、下部タブ「買い物」の有効化
 
 **TDD TODO**
 
 ```
-- [ ] status が urgent の品目は買い物リストに自動で並ぶ
-- [ ] status が soon の品目も並ぶ (ok / unknown は並ばない)
-- [ ] 手動追加した自由入力の行が並ぶ
-- [ ] スヌーズした品目は snoozed_until まで並ばない
-- [ ] チェックすると shopping_list_items に行が作られる
-- [ ] チェック済み行から購入を登録すると Lot が作られ、行が消える
-- [ ] 購入登録後は在庫が増え、ステータスが ok に戻る
-- [ ] アーカイブ済みの品目は並ばない
+一覧の組み立て (spec/models/shopping_lists/merger_spec.rb は DB 不要 / builder_spec.rb は AR)
+- [x] status が urgent の品目は買い物リストに自動で並ぶ
+- [x] status が soon の品目も並ぶ (ok / unknown は並ばない)
+- [x] 手動追加した自由入力の行が並ぶ
+- [x] 手で足した品目は判定が ok でも並ぶ (added_manually の目印)
+- [x] 自動の条件を外れた品目の行は、チェック済みなら残り、数量の上書きだけなら出さない
+- [x] アーカイブ済みの品目は永続行があっても並ばない
+- [x] 並び順は urgent → soon → 手動 (品目) → 自由入力。同じ組は days_left の小さい順
+      (nil は最後)、同値はよみ順
+- [x] 推奨数量: 最低在庫数があれば不足分 (minimum − q + 1)、入数があればその倍数に切り上げる
+      (最低 10・在庫 0・入数 4 なら 12)。最低在庫数が無ければ入数 1 パック / どちらも無ければ 1
+      (1 未満と Item::MAX_QUANTITY 超にはならない)
+- [x] 数量の上書きがあれば推奨数量より優先される
+- [x] 行の DOM id は永続行の有無で変わらない (品目の行は品目 id で決める)
+
+スヌーズ
+- [x] スヌーズした品目は snoozed_until まで並ばない (「スヌーズ中 n 件」に畳む)
+- [x] 境界: snoozed_until が today と同じ日はまだ見送り、前日なら自動で戻る
+- [x] チェック済みならスヌーズ中でも一覧に残る
+- [x] スヌーズを解除すると要購入に戻る
+
+行の操作 (spec/requests/shopping_list_items_spec.rb)
+- [x] チェックすると shopping_list_items に行が作られる (一覧を開いただけでは作られない)
+- [x] 同じ品目を 2 回チェックしても行は増えず、チェック時刻も動かない (冪等)
+- [x] 操作はトグルではなく「この状態にする」なので、古い画面から 2 回送っても反転しない
+- [x] チェックを外して何も残らなくなった行は消える (導出でまた並ぶ)
+- [x] 片づけの直前にほかの人がチェックし直したら消さない (条件付きの DELETE)
+- [x] 行の作成が競合しても、要求した操作は相手の行に反映される (1 度だけやり直す)
+- [x] 一覧に出ていなかった品目 (スヌーズ中・上書きだけ) を手動で足したら「追加しました」と伝え、
+      スヌーズを解除する
+- [x] 操作も手動の指定も無い POST は 400 (作ってすぐ片づける行を「追加しました」と言わない)
+- [x] 消えた行への操作は「もう一度操作してください」と伝える (品目 id から行を作り直さない)
+- [x] 希望数量を上書きでき、空にすると上書きが外れる。"2abc" は 422 (黙って 2 にしない)
+- [x] checked_at / added_by は入力から差し替えられない (mass assignment の遮断)
+- [x] まとめ購入で消えた行への update / destroy は 404 にせず、一覧に戻して理由を伝える
+- [x] 自由入力は前後の空白 (全角を含む) を落とし、空・長すぎる入力は 422 で入力を保つ
+- [x] 自由入力はエスケープされる (XSS)
+- [x] 壊れたパラメータ (配列・8 バイト超の id・存在しない品目) で 500 にしない
+
+まとめ購入 (spec/requests/purchases_spec.rb / spec/models/stock/record_bulk_purchase_spec.rb)
+- [x] チェック済み行から購入を登録すると Lot が作られ、行が消える
+- [x] 購入登録後は在庫が増え、ステータスが ok に戻って一覧から消える
+- [x] 入数 × パック数 / 直接入力の規則は単品の購入 (Lot) と同じ
+- [x] 1 件でも検証エラーなら 1 件も記録しない (全体をロールバックして 422、入力は保つ)
+- [x] 品目は id の昇順で記録する (デッドロック防止)
+- [x] 他の人が先に記録していたら (行が消えている / チェックが外れている) 何も記録せずに伝える
+- [x] 自由入力のチェック済み行は「在庫には記録されません」と明示して一緒に消すが、
+      **フォームに出ていた行だけ** (開いている間に家族がチェックした行は残る)
+- [x] チェック済みが 0 件なら買い物リストに戻す。自由入力だけのときは
+      「買い終えたらリストから外してください」と伝える
+- [x] 数量の初期表示は「入数 × パック数」と「数量」のどちらか一方だけ
+- [x] 購入を記録した品目の行は、チェックも数量の上書きも手動の印もまとめて片づく
+      (単品の購入でも。残すと数か月後に古い上書きが復活する)
+- [x] 行の一部だけが消えていても :stale で 1 件も記録しない
+- [x] 入庫の movement が保存できなかったときは行に戻さずに外に出す (ビューを 500 にしない)
+- [x] 未来日・存在しない店舗・4 バイト整数超の数量は 422 (500 にしない)
+- [x] Stock::RecordPurchase.call! は入れ子で使える (失敗を例外で外に伝え、外側ごとロールバック)
+
+モデルと DB の制約 (spec/models/shopping_list_item_spec.rb)
+- [x] 品目が無ければ自由入力が必要 (check 制約でも守る)
+- [x] 同じ品目の行は 2 つ作れない (部分一意 index)。自由入力は何件でも作れる
+- [x] 行が残っているユーザー・品目は削除できない (restrict)
+- [x] purge_stale! はアーカイブ済み品目の行と期限切れのスヌーズだけを片づける
+
+画面 (spec/system/shopping_list_spec.rb / navigation_spec.rb)
+- [x] 下部タブ「買い物」から開け、まとめ購入でもハイライトされる
+- [x] ダッシュボードのアラートから買い物リストに行ける
+- [x] 品目詳細から買い物リストに追加できる (すでに並んでいればその旨を伝える)
+- [x] JS 無し (rack_test) でチェック → まとめ購入まで進める
+- [x] 自由入力で書き足して、あとで消せる
+- [x] チェックのリダイレクトには操作した行へのアンカーが付く / show に morph の meta が出る
+- [ ] 実ブラウザでもチェックできる (js: true の system spec。ローカルでは skip なので CI で初めて実行される)
+- [ ] 実ブラウザでチェックしてもスクロール位置が先頭に戻らない (同上)
 
 Phase 10 からの申し送り (docs/spec/02-forecast.md 14 節)
-- [ ] 要購入の導出は Forecast::BatchForecaster.call(Item.active) の status (:urgent / :soon) を使う
+- [x] 要購入の導出は Forecast::BatchForecaster.call(Item.active) の status (:urgent / :soon) を使う
       (一覧の ?purchase=urgent と同じ導出。SQL で書き直さない)
-- [ ] 「在庫 n」や推奨数量は Forecast::Result#quantity (期限切れを除いた q) を使う
+- [x] 「在庫 n」や推奨数量は Forecast::Result#quantity (期限切れを除いた q) を使う
       (items.current_quantity は期限切れを含むので判定した在庫とずれる)
-- [ ] today は 1 リクエストにつき 1 回だけ取って BatchForecaster / Expiry::Evaluator に渡す
-- [ ] 品目を一括登録した直後は、在庫イベントが無い auto の品目が :out_of_stock で urgent になり
-      リストが埋まる。仕様どおりだが、緩和するなら tracking_started_on で判別する
+- [x] today は 1 リクエストにつき 1 回だけ取って BatchForecaster に渡す (ShoppingListLoading#set_today)
+- [x] 品目が増えても一覧のクエリ数は増えない
+- [x] 品目を一括登録した直後にリストが埋まる件は、**緩和しない** (仕様どおりに並べる)。
+      在庫を登録していない品目を黙って除外すると、本当に在庫が尽きた品目まで消えるため。
+      初回の体験が気になるならスヌーズで畳める
 ```
 
 **動作確認**: 買い物リストからまとめ購入を登録し、在庫が増えてリストから消える。

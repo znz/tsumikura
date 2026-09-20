@@ -8,6 +8,16 @@ module Stock
       new(item: item, user: user, attributes: attributes).call
     end
 
+    # 入れ子で呼ぶとき用 (docs/spec/01-domain-model.md 5 節)。
+    # 内側の `raise ActiveRecord::Rollback` は外側のトランザクションに届かず、
+    # 「1 件だけ保存できなかったのに全体はコミットされる」が起きるので、
+    # 保存できなかったことを例外で外に伝える (まとめ購入が使う)
+    def self.call!(item:, user:, attributes:)
+      call(item: item, user: user, attributes: attributes).tap do |lot|
+        raise ActiveRecord::RecordInvalid, lot unless lot.persisted?
+      end
+    end
+
     def initialize(item:, user:, attributes:)
       @item = item
       @user = user

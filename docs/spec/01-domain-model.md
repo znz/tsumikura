@@ -55,6 +55,19 @@ item.current_quantity   == item.lots.sum(:remaining_quantity)      … キャッ
 - 自動行を毎回テーブルに書き戻す方式は採らない (GET に副作用が出る / 判定変化との同期がややこしい)。チェック操作が来た時に初めて `find_or_create_by(item:)` する。
 - 買い物中にチェック → 「購入として記録」画面へ遷移し、チェック済み行から `lots` をまとめて作る。
 
+**Phase 11 で決めた規則** (実装: `app/models/shopping_lists/`)
+
+- 一覧の組み立ては `ShoppingLists::Builder` (読み込み) + `ShoppingLists::Merger` (DB に触らない純粋関数) に分ける。表示単位は `ShoppingLists::Row` (値オブジェクト)。
+- **`added_manually` 列を追加した**。手動追加は「チェックも数量の上書きも無い行」と見分けが付かず、列が無いと「購入不要の品目を手で足した行」が即座に消えてしまうため。
+- **一覧に出す行**: 判定が `urgent` / `soon`、または `checked_at` がある、または `added_manually`、または自由入力。**数量の上書きだけが残った行は出さない** (買い終えた品目の上書きが居座らないように)。アーカイブ済みの品目は永続行があっても出さない。
+- **並び順**: `urgent` → `soon` → 手動 (品目) → 自由入力。同じ組の中は `days_left` の小さい順 (`nil` は最後)、同値はよみ順。
+- **推奨数量**: `minimum_quantity` があれば不足分 (`minimum_quantity - q + 1`、最低在庫数を 1 つ上回るまで) を求め、`default_pack_size` があれば**入数の倍数に切り上げる** (最低 10・在庫 0・入数 4 なら 12)。`minimum_quantity` が無ければ、`default_pack_size` があれば 1 パック、無ければ 1。1 未満と `Item::MAX_QUANTITY` 超にはならない。`q` は `Forecast::Result#quantity` (期限切れを除いた在庫)。手で入れた `quantity` があればそちらが優先。
+- **スヌーズ**: `ShoppingListItem::SNOOZE_DAYS` (7) 日先を `snoozed_until` に入れる。`snoozed_until >= today` の間は自動セクションに並べず、「スヌーズ中 n 件」として畳んで見せる (当日はまだ見送り、翌日から戻る)。期限が過ぎた行は**消さずに無視**する (GET に副作用を出さない)。チェック済みならスヌーズ中でも一覧に残す。
+- **行の掃除**: (1) 操作の結果何の意図も残らなくなった行 (チェックを外しただけの行) はその場で消す。条件は `ShoppingListItem.blank_for_items(today)` に置き、**条件付きの DELETE** で消す (メモリ上の値で判断して destroy すると、読んだあとに他の人が付けたチェックごと消してしまう)。(2) **購入を記録したら `ShoppingListItem.settle_after_purchase!(item)`** でその品目の行を片づける (チェックも数量の上書きも手動追加の印もスヌーズも「買う前の意思表示」なので、買った時点で役目を終える)。単品の購入 (`LotsController#create`) とまとめ購入の両方で呼ぶ。**これが無いと、数量の上書きだけが残った行が永遠に残り、数か月後にまた urgent に戻ったときに古い上書きが復活する**。(3) まとめ購入の成功時に `ShoppingListItem.purge_stale!` で見えない行 (アーカイブ済み品目の行・期限切れのスヌーズ) も片づける。(4) それでも残る行 (買い物をしないまま日が経った場合) は Phase 12 の日次ジョブに申し送る。
+- **自由入力**: 品目を持たないので在庫には反映できない。まとめ購入の画面で「在庫には記録されません」と明示したうえで、記録の成功時にチェック済みの自由入力行も一緒に消す (「買った」ものとして扱う)。ただし**消すのはフォームに出ていた行だけ** (`purchase[free_text_ids][]` で id を持ち回る)。開いている間に家族がチェックした行まで消すと、見ていないものが黙って消える。
+- **行の DOM id** (`ShoppingLists::Row#dom_id`) は品目の行なら `shopping_list_row_item_<item_id>`、自由入力なら `shopping_list_row_entry_<id>`。**永続行の有無で変えない** (チェックのたびに id が変わると、リダイレクト先のアンカーも Turbo の morph の対応付けも外れてスクロール位置が飛ぶ)。
+- **行の作成が競合したとき** (部分一意 index の `RecordNotUnique` / uniqueness の検証エラー) は、1 度だけやり直して相手が作った行に同じ操作を適用する (負けた側の操作を黙って捨てない)。
+
 ### 判断 6: 店舗マスタを持ち、価格はロット単位の税込合計とする
 
 - `stores` マスタ (name, note)。`lots.store_id` は NULL 可。
@@ -286,13 +299,17 @@ shopping_list_items                   # 手動追加 / 上書き / チェック�
   id
   item_id       fk null (items)        # null = マスタにない自由入力
   free_text     string                 # item_id が null のとき必須
-  quantity      integer                # 手入力の希望数 (null = 予測から算出)
+  quantity      integer                # 手入力の希望数 (null = 推奨数量を使う)
   checked_at    datetime
-  snoozed_until date                   # 「今回は買わない」
+  snoozed_until date                   # 「今回は買わない」(この日まで並べない)
+  added_manually boolean not null default false   # 手で足した行の目印 (判定が ok に戻っても消さない)
+                                       #   購入を記録したら行ごと消える (settle_after_purchase!)
   added_by_id   fk not null (users)
   timestamps
   index: [item_id] unique where item_id is not null
+  index: [checked_at]
   check: (item_id is not null) or (free_text is not null)
+  品目の fk は on_delete: restrict (品目は物理削除しない)。added_by も restrict
 
 item_alert_states                     # Web Push の重複通知防止
   id
@@ -424,6 +441,7 @@ app/models/stock/
   usage_movements.rb      # 使用記録 1 件ぶんの movement の作成と片づけ (下の 3 つが共有する)
   record_usage.rb         # UsageRecord + StockMovement(s) を作る
   record_purchase.rb      # Lot + StockMovement(purchase) を作る (kind: initial も同じ経路)
+  record_bulk_purchase.rb # まとめ購入: チェック済み行を 1 トランザクションで記録 (record_purchase.call! を入れ子で)
   revise_lot.rb           # ロットの編集 (入庫の movement を直して再計算)
   delete_lot.rb           # ロットの削除 -> 再計算
   record_disposal.rb      # StockMovement(disposal) を作る (Disposal フォームオブジェクトを返す)

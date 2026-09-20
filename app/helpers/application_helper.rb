@@ -38,6 +38,8 @@ module ApplicationHelper
   ITEM_TAB_CONTROLLERS = %w[ items lots usage_records item_purposes disposals ].freeze
   # 下部タブの中央「記録」は、記録メニューと棚卸でハイライトする
   RECORD_TAB_CONTROLLERS = %w[ record_menus stock_takes ].freeze
+  # 下部タブの「買い物」は、買い物リストと、そこから進むまとめ購入でハイライトする
+  SHOPPING_TAB_CONTROLLERS = %w[ shopping_lists shopping_list_items purchases ].freeze
 
   def items_tab_current?
     tab_current?(ITEM_TAB_CONTROLLERS)
@@ -45,6 +47,10 @@ module ApplicationHelper
 
   def record_tab_current?
     tab_current?(RECORD_TAB_CONTROLLERS)
+  end
+
+  def shopping_tab_current?
+    tab_current?(SHOPPING_TAB_CONTROLLERS)
   end
 
   def tab_current?(controllers)

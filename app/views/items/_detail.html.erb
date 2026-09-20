@@ -27,6 +27,17 @@
   <%# 期限切れ・破損・紛失は「使った」ではないので廃棄で記録する %>
   <%= link_to "廃棄を記録", new_item_disposal_path(@item),
         class: secondary_button_classes("mt-2") %>
+
+  <%#
+    買い物リストへの手動追加 (docs/spec/01-domain-model.md 判断 5)。
+    すでに要購入で自動的に並んでいる品目なら、行は増えず「すでにあります」と伝える。
+    アーカイブ済みの品目は買い物リストに出さないので、ボタンも出さない
+  %>
+  <% unless @item.archived? %>
+    <%= button_to "買い物リストに追加", shopping_list_items_path,
+          params: { shopping_list_item: { item_id: @item.id, manual: "true" } },
+          class: secondary_button_classes("mt-2 w-full cursor-pointer") %>
+  <% end %>
 </section>
 
 <%#

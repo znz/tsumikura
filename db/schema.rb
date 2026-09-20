@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_20_000011) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_20_000012) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -103,6 +103,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000011) do
     t.string "user_agent"
     t.bigint "user_id", null: false
     t.index ["user_id"], name: "index_sessions_on_user_id"
+  end
+
+  create_table "shopping_list_items", force: :cascade do |t|
+    t.bigint "added_by_id", null: false
+    t.boolean "added_manually", default: false, null: false
+    t.datetime "checked_at"
+    t.datetime "created_at", null: false
+    t.string "free_text"
+    t.bigint "item_id"
+    t.integer "quantity"
+    t.date "snoozed_until"
+    t.datetime "updated_at", null: false
+    t.index ["added_by_id"], name: "index_shopping_list_items_on_added_by_id"
+    t.index ["checked_at"], name: "index_shopping_list_items_on_checked_at"
+    t.index ["item_id"], name: "index_shopping_list_items_on_item_id", unique: true, where: "(item_id IS NOT NULL)"
+    t.check_constraint "item_id IS NOT NULL OR free_text IS NOT NULL", name: "shopping_list_items_item_or_free_text"
   end
 
   create_table "solid_cache_entries", force: :cascade do |t|
@@ -378,6 +394,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000011) do
   add_foreign_key "lots", "stores", on_delete: :nullify
   add_foreign_key "lots", "users", on_delete: :restrict
   add_foreign_key "sessions", "users"
+  add_foreign_key "shopping_list_items", "items", on_delete: :restrict
+  add_foreign_key "shopping_list_items", "users", column: "added_by_id", on_delete: :restrict
   add_foreign_key "solid_queue_batch_executions", "solid_queue_batches", column: "batch_id", on_delete: :cascade
   add_foreign_key "solid_queue_batch_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade
   add_foreign_key "solid_queue_blocked_executions", "solid_queue_jobs", column: "job_id", on_delete: :cascade

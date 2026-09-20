@@ -21,6 +21,9 @@ class Item < ApplicationRecord
   has_many :lots, dependent: :destroy
   has_many :usage_records, dependent: :destroy
   has_many :item_purposes, -> { order(:position, :id) }, dependent: :destroy
+  # 買い物リストの永続行 (品目 1 件につき 1 行)。外部キーは restrict なので、
+  # 品目を物理削除するときはこちらを先に消す
+  has_one :shopping_list_item, dependent: :destroy
 
   # prefix は必須。付けないと none が AR の Item.none (空スコープ) と衝突し、
   # Rails がクラスロード時に ArgumentError を出す。

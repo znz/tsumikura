@@ -1,0 +1,98 @@
+<%# locals: (row:) %>
+<%#
+  買い物リストの 1 行 (docs/spec/03-screens.md 画面 7)。
+  JS が無くても動くよう、チェック・スヌーズ・削除はそれぞれ小さなフォーム (button_to) にする。
+  送るのは「この状態にする」(checked=true / false) で、トグルにはしない。
+
+  id は永続行の有無で変わらない (Row#dom_id)。チェックで行が作られるたびに id が変わると、
+  リダイレクト先のアンカーも Turbo の morph の対応付けも外れてスクロール位置が飛ぶ。
+%>
+<li class="py-3" id="<%= row.dom_id %>">
+  <div class="flex items-start gap-3">
+    <%= button_to shopping_list_row_url(row),
+          **shopping_list_row_options(row, checked: (row.checked? ? "false" : "true")),
+          aria: { pressed: row.checked? },
+          class: class_names(
+            "flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg border text-lg",
+            row.checked? ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 text-transparent") do %>
+      <span aria-hidden="true">✓</span>
+      <span class="sr-only">
+        「<%= row.name %>」<%= row.checked? ? "のチェックを外す" : "をチェックする" %>
+      </span>
+    <% end %>
+
+    <div class="min-w-0 flex-1">
+      <p class="font-medium text-slate-900">
+        <% if row.item %>
+          <%= link_to row.name, item_path(row.item), class: "text-blue-600 underline" %>
+        <% else %>
+          <%= row.name %>
+        <% end %>
+      </p>
+
+      <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
+        <% if row.status %>
+          <span class="<%= forecast_badge_classes(row.status) %>">
+            <%= forecast_status_label(row.status) %>
+          </span>
+        <% end %>
+        <% if row.stock_quantity %>
+          <span>在庫 <%= row.stock_quantity %> <%= row.unit %></span>
+        <% end %>
+        <% if row.days_left %>
+          <span><%= forecast_days_left_text(row.forecast) %></span>
+        <% end %>
+        <% if row.free_text? %>
+          <span>自由入力 (在庫には記録されません)</span>
+        <% end %>
+      </p>
+
+      <%#
+        希望数量。上書きが無ければ推奨数量を初期値にする。
+        同じ文言のラベル・ボタンが行の数だけ並ぶので、読み上げ用に品目名を添える
+      %>
+      <%= form_with url: shopping_list_row_url(row), method: shopping_list_row_method(row),
+            class: "mt-2 flex items-center gap-2" do %>
+        <% unless row.record_id %>
+          <%= hidden_field_tag "shopping_list_item[item_id]", row.item_id %>
+        <% end %>
+        <%= label_tag "#{row.dom_id}_quantity", class: "text-sm text-slate-500" do %>
+          希望数量<span class="sr-only"> (<%= row.name %>)</span>
+        <% end %>
+        <%= number_field_tag "shopping_list_item[quantity]", row.quantity, min: 1,
+              max: ShoppingListItem::MAX_QUANTITY, inputmode: "numeric",
+              id: "#{row.dom_id}_quantity",
+              class: "min-h-11 w-20 rounded-lg border border-slate-300 px-2 py-1" %>
+        <% if row.unit %>
+          <span class="text-sm text-slate-500"><%= row.unit %></span>
+        <% end %>
+        <%= button_tag type: "submit", name: nil,
+              class: secondary_button_classes("shrink-0 cursor-pointer") do %>
+          <span aria-hidden="true">保存</span>
+          <span class="sr-only">「<%= row.name %>」の希望数量を保存する</span>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="mt-2 flex gap-2 pl-14">
+    <% if row.auto? %>
+      <%# 「今回は買わない」。期限が過ぎたら自動で要購入に戻る %>
+      <%= button_to shopping_list_row_url(row),
+            **shopping_list_row_options(row, snoozed: "true"),
+            class: secondary_button_classes("cursor-pointer") do %>
+        <span aria-hidden="true">今回は買わない</span>
+        <span class="sr-only">「<%= row.name %>」を今回は買わない</span>
+      <% end %>
+    <% end %>
+
+    <%# 自動で並ぶ行は消しても導出でまた出るので、手で足した行にだけ削除を出す %>
+    <% if row.record_id && !row.auto? %>
+      <%= button_to shopping_list_item_path(row.record_id), method: :delete,
+            class: secondary_button_classes("cursor-pointer text-red-700") do %>
+        <span aria-hidden="true">リストから外す</span>
+        <span class="sr-only">「<%= row.name %>」をリストから外す</span>
+      <% end %>
+    <% end %>
+  </div>
+</li>

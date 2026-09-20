@@ -428,6 +428,15 @@ shared:
   初回の体験として気になるなら「在庫を 1 度も登録していない品目は並べない」などの緩和を
   Phase 11 で検討する (`Result#quantity` と `item.tracking_started_on` で判別できる)。
 
+**Phase 11 から Phase 12 への申し送り**
+
+- 買い物リストの古い永続行 (`shopping_list_items`) の掃除を日次ジョブに入れる。GET に副作用を出さない方針なので、一覧の表示では行を消さない。今はまとめ購入の成功時に `ShoppingListItem.purge_stale!(today)` を呼んでいるだけなので、買い物をしないまま日が経つと行が残る。
+  - 消してよいのは (1) アーカイブ済みの品目の行、(2) スヌーズが切れていてチェックも数量の上書きも手動追加でもない行。(2) は **`ShoppingListItem.blank_for_items(today)` スコープをそのまま使う** (行を消す条件を SQL 側に 1 つだけ持つ。メモリ上の値で判断すると、読んだあとに付いたチェックごと消す)。`purge_stale!` はこの 2 つを OR で消す。
+  - 「数量の上書きだけが残った行」はジョブの対象外。購入を記録した時点で `ShoppingListItem.settle_after_purchase!(item)` が行ごと消す (判断 5)。
+- スヌーズは「当日を含めて 8 日ぶん非表示」(`today..today + ShoppingListItem::SNOOZE_DAYS`)。日次ジョブで日付を比べるときもこの境界 (`snoozed_until >= today` なら見送り中) にそろえる。
+- 日次ダイジェストは要購入の判定を再利用できるが、買い物リストのスヌーズ (`snoozed_until`) は通知には反映していない。「今回は買わない」と決めた品目で毎朝通知が鳴るのが気になるなら、Phase 12 でスヌーズ中を除外するかを検討する。
+- 買い物リストの行の操作はすべてフォームの POST + リダイレクトなので、**オフラインでは動かない**。PWA で店頭の圏外を想定するなら、チェックのキューイングが別途要る (今回は対応しない)。
+
 **Phase 12 (日次ダイジェスト)**
 
 - 悪化の検知は `BatchForecaster` と `Expiry::Evaluator` の `status` を `item_alert_states` に

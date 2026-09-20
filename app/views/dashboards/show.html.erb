@@ -8,6 +8,10 @@
 <%# (1) アラートカード 4 種 %>
 <%= render "dashboards/alerts" %>
 
+<%# 「購入推奨」「そろそろ購入」からの導線 (買い物リストは同じ判定から並ぶ) %>
+<%= link_to "買い物リストを開く", shopping_list_path,
+      class: secondary_button_classes("mt-3 w-full") %>
+
 <%# (2) クイック使用 (お気に入り + 最近使った品目) %>
 <section class="mt-6" aria-label="クイック使用">
   <div class="flex items-center justify-between gap-2">

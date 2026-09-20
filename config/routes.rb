@@ -43,6 +43,14 @@ Rails.application.routes.draw do
     resource :finalization, only: :create, module: :stock_takes
   end
 
+  # 買い物リスト (docs/spec/03-screens.md 画面 7)。
+  # 一覧は「要購入判定からの導出 ∪ 永続行」なので、一覧そのものはリソースを持たない
+  # (行の作成・更新・削除だけが shopping_list_items)
+  resource :shopping_list, only: :show
+  resources :shopping_list_items, only: %i[ create update destroy ]
+  # まとめ購入。チェック済みの行から複数品目の Lot を 1 度に作る (画面 5b)
+  resources :purchases, only: %i[ new create ]
+
   # マスタ。show は一覧で足りるので置かない。
   # 並べ替えは JS 無しで動く「上へ / 下へ」なので、position の更新も 1 つのリソースにする
   resources :categories, except: :show do

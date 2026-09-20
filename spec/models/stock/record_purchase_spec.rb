@@ -171,6 +171,44 @@ RSpec.describe Stock::RecordPurchase, type: :model do
     expect(first_lock_index(statements)).to be < first_write_index(statements)
   end
 
+  # まとめ購入 (Stock::RecordBulkPurchase) が入れ子で呼ぶ。
+  # 内側の ActiveRecord::Rollback は外側のトランザクションに届かないので例外にする
+  describe ".call!" do
+    it "保存できれば Lot を返す" do
+      lot = described_class.call!(item: item, user: user,
+        attributes: { acquired_on: Date.current, initial_quantity: 3 })
+
+      expect(lot).to be_persisted
+    end
+
+    it "保存できなければ ActiveRecord::RecordInvalid を上げ、エラー付きの Lot を持たせる" do
+      expect {
+        described_class.call!(item: item, user: user,
+          attributes: { acquired_on: Date.current, initial_quantity: 0 })
+      }.to raise_error(ActiveRecord::RecordInvalid) { |error|
+        expect(error.record.errors[:initial_quantity]).to be_present
+      }
+    end
+
+    it "外側のトランザクションから見て、失敗した入庫が残らない" do
+      # let は遅延評価なので、先に作っておかないと品目と記録者までロールバックで消える
+      item
+      user
+
+      expect {
+        ApplicationRecord.transaction do
+          described_class.call!(item: item, user: user,
+            attributes: { acquired_on: Date.current, initial_quantity: 5 })
+          described_class.call!(item: item, user: user,
+            attributes: { acquired_on: Date.current, initial_quantity: 0 })
+        end
+      }.to raise_error(ActiveRecord::RecordInvalid)
+
+      expect(Lot.count).to eq 0
+      expect(item.reload.current_quantity).to eq 0
+    end
+  end
+
   # 途中で例外が起きたときに Lot だけ・movement だけが残ると在庫が狂う
   it "再計算が失敗したら Lot も movement も残らない (同一トランザクション)" do
     allow(Stock::Recalculator).to receive(:call).and_raise("boom")

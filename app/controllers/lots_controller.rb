@@ -22,6 +22,9 @@ class LotsController < ApplicationController
     @lot = Stock::RecordPurchase.call(item: @item, user: Current.user, attributes: create_params)
 
     if @lot.persisted?
+      # 買った品目の買い物リストの行は役目を終える (数量の上書きが次の機会まで残らないように)
+      ShoppingListItem.settle_after_purchase!(@item)
+
       redirect_to @item, notice: "「#{@item.name}」に#{helpers.lot_kind_label(@lot)}を記録しました。" \
         "#{stock_take_warning(@lot.acquired_on, @item)}"
     else

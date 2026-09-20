@@ -1,0 +1,90 @@
+<% content_for :title, "買い物リスト" %>
+<%#
+  チェックのたびに同じ URL へリダイレクトするので、Turbo からは「ページの再表示」に見える。
+  morph + scroll: preserve にして、店頭で長いリストの下の方をチェックしても
+  先頭に飛ばされないようにする (JS が無いときはリダイレクト先のアンカーで戻る)。
+%>
+<% turbo_refreshes_with method: :morph, scroll: :preserve %>
+
+<h1 class="text-2xl font-bold text-slate-900">買い物リスト</h1>
+<p class="<%= hint_classes %>">
+  要購入と判定された品目は自動で並びます。チェックした品目は、そのまま購入として記録できます。
+</p>
+
+<% if @list.checked_count.positive? %>
+  <%= link_to "チェック済み #{@list.checked_count} 件を購入として記録", new_purchase_path,
+        class: primary_button_classes("mt-4 block text-center") %>
+<% end %>
+
+<%# 自動 (要購入) セクション。導出なので、購入を記録すると次に開いたときには消える %>
+<section class="mt-6" aria-label="要購入">
+  <h2 class="font-bold text-slate-900">要購入 (<%= @list.auto_rows.size %> 件)</h2>
+
+  <% if @list.auto_rows.any? %>
+    <ul class="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-4"
+        aria-label="要購入の品目">
+      <% @list.auto_rows.each do |row| %>
+        <%= render "shopping_lists/row", row: row %>
+      <% end %>
+    </ul>
+  <% else %>
+    <p class="mt-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+      いま買う必要のある品目はありません。
+    </p>
+  <% end %>
+</section>
+
+<%# 手動追加セクション (手で足した品目・自由入力・買い終えたチェック済み) %>
+<section class="mt-6" aria-label="手動追加">
+  <h2 class="font-bold text-slate-900">手動で追加したもの (<%= @list.manual_rows.size %> 件)</h2>
+
+  <% if @list.manual_rows.any? %>
+    <ul class="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-4"
+        aria-label="手動で追加した品目">
+      <% @list.manual_rows.each do |row| %>
+        <%= render "shopping_lists/row", row: row %>
+      <% end %>
+    </ul>
+  <% end %>
+
+  <%# マスタにないものは自由入力で足す (在庫には記録されない) %>
+  <%= form_with url: shopping_list_items_path, method: :post,
+        class: "mt-3 rounded-xl border border-slate-200 bg-white p-4" do %>
+    <%= render "form_errors", record: @new_entry %>
+
+    <%= label_tag "shopping_list_item_free_text", "リストに書き足す", class: label_classes("mt-2") %>
+    <%= text_field_tag "shopping_list_item[free_text]", @new_entry.free_text,
+          id: "shopping_list_item_free_text", placeholder: "例: はがき",
+          maxlength: ShoppingListItem::MAX_FREE_TEXT_LENGTH, class: field_classes %>
+    <p class="<%= hint_classes %>">品目マスタにないものも書けます (在庫には記録されません)。</p>
+    <%= submit_tag "追加", class: secondary_button_classes("mt-3 w-full") %>
+  <% end %>
+</section>
+
+<%# スヌーズ (今回は買わない)。期限が過ぎると自動で要購入に戻る %>
+<% if @list.snoozed_count.positive? %>
+  <details class="group mt-6 rounded-xl border border-slate-200 bg-white px-4">
+    <summary class="flex min-h-11 cursor-pointer list-none items-center gap-2 py-3 text-sm font-medium text-slate-700">
+      <span class="text-slate-400 transition-transform group-open:rotate-90" aria-hidden="true">▶</span>
+      <span>スヌーズ中 (<%= @list.snoozed_count %> 件)</span>
+    </summary>
+    <ul class="divide-y divide-slate-200" aria-label="スヌーズ中の品目">
+      <% @list.snoozed_rows.each do |row| %>
+        <li class="flex items-center justify-between gap-3 py-3">
+          <div class="min-w-0">
+            <p class="truncate font-medium text-slate-900"><%= row.name %></p>
+            <p class="text-sm text-slate-500">
+              <%= l(row.record.snoozed_until) %> まで並べません
+            </p>
+          </div>
+          <%= button_to shopping_list_row_url(row),
+                **shopping_list_row_options(row, snoozed: "false"),
+                class: secondary_button_classes("shrink-0 cursor-pointer") do %>
+            <span aria-hidden="true">解除</span>
+            <span class="sr-only">「<%= row.name %>」のスヌーズを解除する</span>
+          <% end %>
+        </li>
+      <% end %>
+    </ul>
+  </details>
+<% end %>

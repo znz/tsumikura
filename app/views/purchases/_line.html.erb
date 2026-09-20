@@ -1,0 +1,64 @@
+<%# locals: (line:) %>
+<%#
+  まとめ購入の 1 行 (docs/spec/03-screens.md 画面 5b)。
+  数量は単品の購入 (lots/_form) と同じ規則: 入数とパック数の両方が入っていればその積、
+  入っていなければ直接入力の数量を使う (Lot#apply_pack_quantity)。
+%>
+<li class="py-4">
+  <p class="font-medium text-slate-900"><%= line.item.name %></p>
+
+  <% if line.errors.any? %>
+    <ul class="mt-1 list-inside list-disc text-sm text-red-700" role="alert">
+      <% line.errors.each do |error| %>
+        <li><%= error.full_message %></li>
+      <% end %>
+    </ul>
+  <% end %>
+
+  <div class="mt-2 grid grid-cols-2 gap-3">
+    <div>
+      <%= label_tag purchase_line_field_id(line, :pack_size), Lot.human_attribute_name(:pack_size),
+            class: label_classes %>
+      <%= number_field_tag purchase_line_field_name(line, :pack_size), line.lot.pack_size,
+            id: purchase_line_field_id(line, :pack_size), min: 1, inputmode: "numeric",
+            class: field_classes %>
+    </div>
+    <div>
+      <%= label_tag purchase_line_field_id(line, :pack_count), Lot.human_attribute_name(:pack_count),
+            class: label_classes %>
+      <%= number_field_tag purchase_line_field_name(line, :pack_count), line.lot.pack_count,
+            id: purchase_line_field_id(line, :pack_count), min: 1, inputmode: "numeric",
+            class: field_classes %>
+    </div>
+  </div>
+
+  <div class="mt-3">
+    <%= label_tag purchase_line_field_id(line, :initial_quantity),
+          "#{Lot.human_attribute_name(:initial_quantity)} (#{line.item.unit})", class: label_classes %>
+    <%= number_field_tag purchase_line_field_name(line, :initial_quantity), line.lot.initial_quantity,
+          id: purchase_line_field_id(line, :initial_quantity), min: 1, inputmode: "numeric",
+          class: field_classes %>
+    <p class="<%= hint_classes %>">
+      入数とパック数の両方を入れると、その掛け算が数量になります。
+      数量を直接入れたいときは、入数とパック数を空にしてください。
+    </p>
+  </div>
+
+  <div class="mt-3">
+    <%= label_tag purchase_line_field_id(line, :price_yen), Lot.human_attribute_name(:price_yen),
+          class: label_classes %>
+    <%= number_field_tag purchase_line_field_name(line, :price_yen), line.lot.price_yen,
+          id: purchase_line_field_id(line, :price_yen), min: 0, inputmode: "numeric",
+          placeholder: "税込で入力", class: field_classes %>
+  </div>
+
+  <%# 期限の欄は「期限を管理する」品目にだけ出す (lots/_form と同じ規則) %>
+  <% if line.item.tracks_expiry? || line.lot.expires_on.present? %>
+    <div class="mt-3">
+      <%= label_tag purchase_line_field_id(line, :expires_on), Lot.human_attribute_name(:expires_on),
+            class: label_classes %>
+      <%= date_field_tag purchase_line_field_name(line, :expires_on), line.lot.expires_on,
+            id: purchase_line_field_id(line, :expires_on), class: field_classes %>
+    </div>
+  <% end %>
+</li>

@@ -16,7 +16,7 @@ RSpec.describe "グローバルナビ", type: :system do
       expect(page).to have_link("ホーム")
       expect(page).to have_link("メニュー")
       expect(page).to have_link("品目")
-      expect(page).to have_text("買い物")
+      expect(page).to have_link("買い物")
       expect(page).to have_link("記録")
     end
   end
@@ -74,13 +74,27 @@ RSpec.describe "グローバルナビ", type: :system do
     within(tab_bar) { expect(page).to have_no_css("a[aria-current='page']", text: "品目") }
   end
 
-  it "未実装のタブ (買い物) はリンクにせず、準備中だと伝える" do
+  it "買い物タブから買い物リストに行ける" do
     sign_in_as create(:user)
 
-    within(tab_bar) do
-      expect(page).to have_no_link("買い物")
-      expect(page).to have_css("[role='link'][aria-disabled='true']", count: 1)
-      expect(page).to have_text("準備中")
+    within(tab_bar) { click_link "買い物" }
+
+    expect(page).to have_current_path(shopping_list_path)
+  end
+
+  it "まとめ購入でも買い物タブがハイライトされる" do
+    item = create(:item, minimum_quantity: 5)
+    create(:lot, item: item, initial_quantity: 3)
+    user = create(:user)
+    create(:shopping_list_item, :checked, item: item, added_by: user)
+    sign_in_as user
+
+    [ shopping_list_path, new_purchase_path ].each do |path|
+      visit path
+
+      within(tab_bar) do
+        expect(page).to have_css("a[aria-current='page']", text: "買い物"), "#{path} で買い物タブが現在地にならない"
+      end
     end
   end
 
