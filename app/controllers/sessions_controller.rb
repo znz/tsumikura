@@ -24,7 +24,23 @@ class SessionsController < ApplicationController
   end
 
   def destroy
+    # terminate_session は reset_session するので、Current.user が居るうちに済ませる
+    forget_push_subscription
     terminate_session
     redirect_to new_session_path, notice: "ログアウトしました。", status: :see_other
   end
+
+  private
+    # ログアウトした端末に通知が届き続けないよう、その端末の購読を消す
+    # (docs/spec/04-notifications.md 5 節)。endpoint は logout_controller.js が hidden で送る。
+    #
+    # **消すのは Current.user の購読だけ**。endpoint は一意なので他人の endpoint を送っても
+    # 何も起きない。JS が無い / 送れなかった端末では購読は残る (これまでどおり)
+    def forget_push_subscription
+      endpoint = params[:push_endpoint]
+      return unless endpoint.is_a?(String)
+      return if endpoint.empty? || endpoint.bytesize > WebPushSubscription::MAX_ENDPOINT_LENGTH
+
+      Current.user.web_push_subscriptions.find_by(endpoint: endpoint)&.destroy
+    end
 end

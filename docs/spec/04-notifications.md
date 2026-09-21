@@ -25,8 +25,10 @@
   "theme_color": "#5B7C5A",
   "background_color": "#FAF8F3",
   "icons": [
-    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any" },
-    { "src": "/icon.png", "type": "image/png", "sizes": "512x512" }
+    { "src": "/icon.svg",          "type": "image/svg+xml", "sizes": "any",     "purpose": "any" },
+    { "src": "/icon.png",          "type": "image/png",     "sizes": "512x512", "purpose": "any" },
+    { "src": "/icon-192.png",      "type": "image/png",     "sizes": "192x192", "purpose": "any" },
+    { "src": "/icon-maskable.png", "type": "image/png",     "sizes": "512x512", "purpose": "maskable" }
   ],
   "shortcuts": [
     { "name": "買い物リスト", "short_name": "買い物", "url": "/shopping_list" },
@@ -36,11 +38,21 @@
 ```
 
 - manifest が参照するファイルは実在すること (`spec/requests/pwa_spec.rb` で固定している)。
-- `public/icon.svg` は「つ」の字だけの暫定アイコン、`public/icon.png` は Rails 既定の 512px のまま。
-  **デザインしたアイコン (512px / 192px の PNG) への差し替えが残っている**
-  ([未決事項](../plan/open-questions.md))。192px を足すときは `icons` にも 1 行足す。
-- **`purpose: "maskable"` の行は今は置かない。** Rails 既定のアイコンには安全域 (周囲 20%) が無く、
-  maskable と宣言すると Android で端が切れる。安全域を持つアイコンに差し替えたときに足す。
+- **アイコンの原本は `public/icon.svg`** (「つ」の 1 文字だけの単純な図形)。PNG は
+  `script/generate_icons.sh` が SVG から作る (使い捨ての Docker コンテナの rsvg-convert で描く)。
+  **デザインを変えるときは `public/icon.svg` を直してこのスクリプトを実行し直す。**
+
+  | ファイル | 大きさ | 用途 |
+  |---|---|---|
+  | `public/icon.png` | 512px | 通常のアイコン (角丸) |
+  | `public/icon-192.png` | 192px | Android が好む大きさ。通知のアイコンにも使う |
+  | `public/icon-maskable.png` | 512px | Android の切り抜き用。**全面塗り**で、図柄を安全域 (中央 80%) に収めてある |
+  | `public/apple-touch-icon.png` | 180px | iOS 用。iOS が自分で角を丸めるので全面塗り |
+
+- **`any` と `maskable` は別エントリにする。** maskable は「全面塗り + 安全域」の別画像なので、
+  通常のアイコンに `purpose: "any maskable"` を兼ねさせると Android の円形の切り抜きで端が欠ける。
+- レイアウトの `<link rel="apple-touch-icon">` は `/apple-touch-icon.png` を指す
+  (角丸の `icon.png` を渡すと iOS の角丸と二重になる)。
 - `id` は `"/"` に固定する (`start_url` が変わっても同じアプリとして扱われる)。
 - レイアウトには `theme-color` の meta を置く (manifest の `theme_color` と同じ値)。
   `viewport-fit=cover` は Phase 4 で導入済み。
@@ -59,8 +71,13 @@
 - `push` は `{ title, options }` を受け取って `showNotification(title, options)` を呼ぶ。
   **JSON が読めなくても必ず通知を出す** (`try` で既定の本文に落とす)。`userVisibleOnly` の購読で
   通知を出さない push が続くと、ブラウザ (特に Safari) が購読そのものを取り消すため。
-  `options` には `icon: "/icon.png"` と `tag` を付ける (ダイジェストは `daily-digest`、
+  `options` には `icon: "/icon-192.png"` と `tag` を付ける (ダイジェストは `daily-digest`、
   テスト送信は `notification-test`。同じ tag の通知は置き換わるので通知欄に積み上がらない)。
+  アイコンはサーバ側 (`DailyDigestJob::ICON` / `NotificationTestsController::ICON`) が送り、
+  service worker 側にも同じ値を既定として持たせる (payload が壊れてもアイコン無しの通知にしない)。
+  **512px ではなく 192px を使う** (通知の枠に対して 512px は大きすぎる)。
+  **`badge` は付けない**: Android の badge は単色のシルエット画像が要り、いまのアイコンをそのまま
+  渡すと黒い四角になる。専用の画像を用意したときに足す。
 - `notificationclick` は `options.data.path` を開く。**同じパスのタブが既に開いていれば `focus`**、
   無ければ `openWindow`。
   **開いているタブを `navigate()` で使い回すことはしない**: `includeUncontrolled: true` で拾った
@@ -179,6 +196,28 @@ endpoint 全文が入るのでログに残ってしまう) し、**非 ASCII も
 - `endpoint` / `p256dh` / `auth` は `config/initializers/filter_parameter_logging.rb` でログから落とす。
   画面にも `endpoint` は出さない (端末を特定できる値のため、一覧には `user_agent` の要約だけを出す)。
 
+### ログアウトでこの端末の購読を解除する
+
+共用の端末を使ったあと、ログアウトしたのに通知が届き続けるのを防ぐ
+(`app/javascript/controllers/logout_controller.js` + `SessionsController#destroy`)。
+
+- メニューの「ログアウト」のフォームに `data-controller="logout"` を付け、`submit` を横取りする。
+  `navigator.serviceWorker.getRegistration()` → `pushManager.getSubscription()` と辿り、
+  購読があれば **`endpoint` を hidden (`push_endpoint`) に入れてから `unsubscribe()`** して送る
+  (`unsubscribe()` のあとは `endpoint` を読めなくなる実装があるので順番が要る)。
+  `register()` はしない (登録済みでなければ購読も無い)。
+- **どの段階で失敗してもログアウトは必ず進める。** 未対応のブラウザ、Service Worker が未登録、
+  例外、応答が返ってこない、のいずれでも `try` / `catch` / `finally` で必ずフォームを送る。
+  待つのは **2 秒まで** (`Promise.race`) で、時間切れのときは `push_endpoint` が空のまま送る。
+  解除を待っている間の連打は無視する (二重 submit の防止)。
+- サーバ側は `push_endpoint` を受け取り、**`Current.user` の購読のうち `endpoint` が一致する 1 件だけ**
+  を消す。`String` でない値・空文字・`MAX_ENDPOINT_LENGTH` を超える値は無視する。
+  `endpoint` は一意なので他人の `endpoint` を送っても何も起きない。
+  `terminate_session` の**前**に行う (`reset_session` すると `Current.user` が居なくなる)。
+- `push_endpoint` は `filter_parameters` の `:endpoint` (部分一致) でログから落ちる。
+- JS の無い環境では `push_endpoint` が空のまま送られ、購読はこれまでどおり残る (5 節)。
+- `/account` の通知セクションに「ログアウトすると、この端末の通知はオフになります。」と断る。
+
 配信側 (`WebPushDeliveryJob`) は **1 購読 1 ジョブ**にする (1 ジョブで全購読を回すと、1 台が遅い
 だけで残りの家族に届かなくなる)。
 
@@ -254,7 +293,7 @@ production:
     その人にとって 0 件なら送らない)
      title:   "つみくら"
      options: { body: "購入推奨 1 件・そろそろ購入 2 件・期限切れ 1 件・期限間近 1 件 — トイレットペーパー ほか",
-                icon: "/icon.png", tag: "daily-digest", data: { path: "/" } }
+                icon: "/icon-192.png", tag: "daily-digest", data: { path: "/" } }
 5. 送信の成否にかかわらず、**全品目**の item_alert_states を更新する
    (改善も記録するので、回復後にもう一度悪化したらまた通知される)
    ただし**見送り中の品目の要購入ステータスは前回値のまま据え置く**
@@ -306,7 +345,8 @@ production:
 
 | こと | いまの挙動 | 理由と将来の選択肢 |
 |---|---|---|
-| **ログアウトしても購読は残る** | その端末には通知が届き続ける | 通知の中身は**世帯で共通**で、ユーザーごとに変わるのは種別の ON/OFF だけなので、実害は小さい。止めたいときは `/account` の「通知を受け取る端末」から削除する。ログアウト時に自動で消す案は[未決事項](../plan/open-questions.md)に置いた |
+| **JS の無い環境ではログアウトしても購読が残る** | その端末には通知が届き続ける | メニューの「ログアウト」は `logout_controller.js` がこの端末の購読を解除してから送る (下記) が、**JS が無い / 未対応 / 解除に失敗した**ときは購読が残る。止めたいときは `/account` の「通知を受け取る端末」から削除する |
+| **「このデバイス以外をすべてログアウト」とセッションの個別失効では購読を消せない** | 失効させた端末には通知が届き続ける | **セッションと購読を紐づけていない**ため。購読を持っているのはブラウザで、別の端末からサーバの行を消しても、相手のブラウザの購読そのものは残る (次に `/account` を開いた時点で復活する)。紐づけるには購読に session_id を持たせる必要があり、同じ端末で別の家族がログインしたときの付け替え (下の行) と噛み合わない |
 | **同じ端末で別の家族が `/account` を開くと購読がその人に移る** | `endpoint` は端末に 1 つなので `user_id` が付け替わる | 「1 台の端末に 1 人」という前提。付け替えないと同じ端末に 2 通届く。移った結果、種別の ON/OFF はその人の設定になる |
 | **購読の再同期が `/account` でしか働かない** | Push サービス側で購読が作り直されると、次に `/account` を開くまで通知が止まる | `pushsubscriptionchange` を Service Worker で処理できない (ログイン中の Cookie が要る) ため。レイアウトに常駐させて全ページで再同期する案は[未決事項](../plan/open-questions.md)に置いた。1 日 1 通の通知なので、届かない日が続いたら `/account` を開いてもらう |
 | **オフラインでは何もできない** | キャッシュを持たないので、圏外では画面が開かない | 古い在庫数を見せる害の方が大きいと判断した (1 節)。店頭でのチェックのキューイングも入れていない |
@@ -326,6 +366,18 @@ iOS Safari の Web Push は **「ホーム画面に追加」で PWA としてイ
 Push の許可ダイアログと Service Worker はヘッドレスブラウザで扱いにくいので、`js: true` の system spec は
 書いていない。代わりに **Stimulus のターゲットとデータ属性がビューに出ていること**を request spec
 (`spec/requests/account_notifications_spec.rb`) で固定してある。実機では次の順で確かめる。
+
+**確認の状況 (2026-09-21 時点)**
+
+| 端末 | 状況 |
+|---|---|
+| **Android (Chrome)** | **確認済み**。購読でき、テスト送信が届き、通知のタップでアプリが開いた (下の 3.〜6.) |
+| iPhone / iPad (Safari) | **未確認**。「ホーム画面に追加」が前提 (6 節) なので、下の 2. から順に試す |
+| PC ブラウザ | **未確認** |
+| ホーム画面への追加 (PWA) | **未確認**。アイコンが「つ」のものになっているかもここで見る |
+| 毎朝 8 時の日次ダイジェスト | **未確認** (まだ朝をまたいでいない。下の 8.) |
+| ログアウトでこの端末の通知が消えること | **未確認**。ログアウト後に `/account` を開き直して「通知を受け取る端末」から消えていること (3 節) |
+
 
 1. `dokku config:set` で VAPID の 3 変数を設定し、デプロイする
 2. スマホのブラウザで開いてログイン → **共有メニューから「ホーム画面に追加」**

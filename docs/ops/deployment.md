@@ -76,17 +76,22 @@ dokku config:set tsumikura SOLID_QUEUE_IN_PUMA=1 WEB_CONCURRENCY=0 RAILS_MAX_THR
 | 項目 | 現状 | 変更 | 理由 |
 |---|---|---|---|
 | `BUNDLE_WITHOUT` | `"development"` | `"development:test"` | RSpec / Capybara / Selenium を本番イメージに入れない |
-| Thruster | `CMD ["./bin/thrust", "./bin/rails", "server"]` / `EXPOSE 80` | **Phase 5 (初回デプロイ) で決める。下記参照** | — |
+| Thruster | `CMD ["./bin/thrust", "./bin/rails", "server"]` / `EXPOSE 80` | **変更しない (案 B で確定。3.1 節)** | 初回デプロイでそのまま動いた |
 
 `bin/docker-entrypoint` の `db:prepare` は削除し、マイグレーションは `app.json` の predeploy に一本化する (4 節)。
 
-### 3.1 Thruster をどうするか (未決)
+### 3.1 Thruster をどうするか (決定済み: 残す)
+
+> **決定 (2026-09-21)**: **案 B (Thruster を残す。`Dockerfile` / `Gemfile` / `bin/thrust` は変更なし) で確定。**
+> Dokku への初回デプロイで `Dockerfile` を一切変えずにそのまま動いた (`bind: permission denied` も 502 も出なかった)。
+> `ports:set` の明示も要らなかった。以下の検討内容と案 A の切り替え手順は**参考 (使わなかった)** として残す。
+> 将来 Docker が古い環境へ移すときや 502 が出たときは、案 A に倒せる。
 
 査読 (Dokku / Thruster のソースと公式ドキュメントで確認): Dockerfile デプロイで Dokku はコンテナに `PORT` 環境変数を注入する (`EXPOSE 80` なら `PORT=80`)。一方 Thruster は自分の待ち受けポートには `PORT` を使わず `HTTP_PORT` (既定 80) を見て、子プロセス (Puma) を起動するときは `PORT` を `TARGET_PORT` (既定 3000) で上書きして渡す。したがって Dokku が注入する `PORT` と Thruster / Puma の間でポートの取り合いは起きにくい。残る懸念は非 root (uid 1000) での 80 番への bind だけで、Docker 20.10 以降のブリッジネットワークでは `ip_unprivileged_port_start` の既定が 0 のため通常は問題ない (失敗時の症状は `listen tcp :80: bind: permission denied`)。
 
-**推奨: まず案 B (現状の Dockerfile のまま、変更なし) でデプロイし、`bind: permission denied` や 502 が出たときだけ案 A に切り替える。** 最終判断は初回デプロイでの実地確認に委ねる (引き続き未決)。具体的な確認手順は [初回デプロイ手順書](first-deploy.md#6-thruster-の判断-未決事項-1) を参照。
+**実地の結果: 案 B (現状の Dockerfile のまま、変更なし) が素直に動いたので、これで確定した。** 具体的な確認手順は [初回デプロイ手順書](first-deploy.md#6-thruster-の判断-決定済み-案-b) を参照。
 
-**案 A: Thruster を外して Puma 直起動**
+**案 A: Thruster を外して Puma 直起動 (参考。使わなかった)**
 
 ```dockerfile
 EXPOSE 3000
@@ -97,9 +102,9 @@ CMD ["./bin/rails", "server"]
 - Dockerfile デプロイでは `EXPOSE` からの自動検出マッピングが `http:3000:3000` になり、外部の 80/443 番への対応が無くなる (letsencrypt の HTTP-01 チャレンジも失敗する)。**`dokku ports:set tsumikura http:80:3000` を明示的に実行する必要がある。**
 - 前段に Dokku の nginx がいるので、Thruster の圧縮・キャッシュ・X-Sendfile の価値は限定的。
 
-**案 B: Thruster を残す (現状の Dockerfile のまま)**
+**案 B: Thruster を残す (現状の Dockerfile のまま) — 採用**
 
-- `EXPOSE 80` のまま。Dockerfile デプロイでは `EXPOSE` から `Ports map detected: http:80:80` が自動検出されるので、`ports:set` による明示設定は不要 (`dokku ports:report` で確認する)。
+- `EXPOSE 80` のまま。Dockerfile デプロイでは `EXPOSE` から `Ports map detected: http:80:80` が自動検出されるので、`ports:set` による明示設定は不要 (`dokku ports:report` で確認する)。**実地でもこのとおりだった。**
 - 静的アセットの gzip / brotli 配信と X-Sendfile が使える。将来 Dokku 以外へ移すときに構成を変えずに済む。
 
 **判断材料**
@@ -111,7 +116,7 @@ CMD ["./bin/rails", "server"]
 | 生成物からの乖離 | `rails new` の既定から外れる | 既定のまま |
 | 切り戻し | いつでも戻せる (Gemfile と Dockerfile の数行) | 同左 |
 
-初回デプロイで案 B が素直に動けばそのまま残し、`bind: permission denied` や 502 が出たら案 A に倒す。決定したら本節と [未決事項](../plan/open-questions.md) を更新する。
+初回デプロイで案 B が素直に動いたのでそのまま残した (2026-09-21)。[未決事項](../plan/open-questions.md) #1 も決定済みに移してある。
 
 ## 4. `app.json`
 

@@ -110,7 +110,7 @@ authenticated_actions = [
   # パスキー (docs/spec/05-auth.md 5 節)。**未ログインで通すのは
   # sessions/passkeys の options / create だけ**なので、この 3 つはここで守る
   [ "パスキーの登録オプション", :post, -> { options_passkeys_path },
-    -> { { current_password: "password" } } ],
+    -> { { current_password: "family-password" } } ],
   [ "パスキーの登録", :post, -> { passkeys_path }, -> { { credential: "{}" } } ],
   [ "パスキーの削除", :delete, -> { passkey_path(passkey) }, -> { {} } ]
 ]

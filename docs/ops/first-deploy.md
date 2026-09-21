@@ -52,6 +52,14 @@ dokku git:report tsumikura   # "Git deploy branch" が main になっている�
 
 `deploy-branch` を明示しておくと、5 節の `git push dokku <ブランチ>:main` の `main` が確実にデプロイ対象になる (既定でも通常 `main` だが、念のため明示する)。
 
+> **既存の Dokku 環境では**: dokku-postgres プラグインが既に入っていて、既存のサービスが動いていることがある。その場合もサービス自体は**アプリごとに分けて作る** (下の `tsumikura-db`)。既存のサービスを共用しない。プラグインの既定イメージのバージョンは既存の環境に合わせて決まるので、下のとおり作ってから確認する。
+>
+> ```bash
+> dokku postgres:list   # 既存のサービスを確認する (名前が衝突しないこと)
+> ```
+>
+> **2026-09-21 の初回デプロイの結果: 作成された PostgreSQL は 18 で、開発用 `compose.yaml` の `postgres:18` と同じだった。`compose.yaml` の変更は不要。**
+
 PostgreSQL サービスを作る前に、開発用 [`compose.yaml`](../../compose.yaml) が `postgres:18` を使っていることを確認しておく。既定の手順は、**バージョンを指定せずプラグインの既定イメージで作成し、実際のバージョンを確認してから `compose.yaml` 側を合わせる**。
 
 ```bash
@@ -145,10 +153,11 @@ unset VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
 - 鍵が未設定でもアプリは起動する。`/account` の通知セクションが
   「サーバに通知の鍵が設定されていません。」になるだけなので、後から設定してもよい。
 
-> **アイコンの差し替えが残っている**: `public/icon.png` は Rails 既定のアイコンのままで、
-> `public/icon.svg` は暫定の簡易アイコン。ホーム画面に追加したときの見た目が「つみくら」の
-> ものにならないので、512px / 192px の PNG を用意して差し替えること
-> ([未決事項](../plan/open-questions.md))。
+> **アイコンについて**: 原本は `public/icon.svg` で、PWA と iOS 用の PNG は
+> `script/generate_icons.sh` がそこから作る (`icon.png` / `icon-192.png` /
+> `icon-maskable.png` / `apple-touch-icon.png`)。デザインを変えるときは `icon.svg` を直して
+> スクリプトを実行し直し、生成された PNG ごとコミットする
+> ([通知](../spec/04-notifications.md#1-pwa-の有効化))。
 
 ### 3.2 WEBAUTHN (パスキー)
 
@@ -182,6 +191,15 @@ dokku config:set tsumikura \
 
 ## 4. ドメイン設定、永続ストレージのマウント
 
+> **既存の Dokku 環境では**: 他のアプリが動いている Dokku サーバでは、**global domain が既に設定済み**のことがある (その場合、アプリを作った時点で `<app>.<global domain>` が自動で付く)。その場合は下の `domains:set` を飛ばすか、既存の設定に合わせる。まず確認する。
+>
+> ```bash
+> dokku domains:report --global   # global domain の設定を見る (サブコマンドの有無は dokku domains:help で確認)
+> dokku domains:report tsumikura  # このアプリに何が付いているか
+> ```
+>
+> 2026-09-21 の初回デプロイでは、既存環境に global な設定があったのでこの節は読み替えて実施した。
+
 他のアプリが同じドメインを既に使っていないか確認する (2 つのアプリに同じドメインを設定すると nginx の server name が衝突する)。
 
 ```bash
@@ -204,6 +222,8 @@ dokku storage:mount tsumikura /var/lib/dokku/data/storage/tsumikura:/rails/stora
 
 ## 5. git remote の追加と初回 push
 
+> **push するブランチは読み替える。** 下の例は Phase 5 当時のブランチ名。**その時点の作業ブランチ**を `git push dokku <そのブランチ>:main` の形で push する (GitHub に push していなくてもよい。Dokku は別の remote)。2026-09-21 の初回デプロイは `phase-13-passkeys` を `git push dokku phase-13-passkeys:main` で push した。
+
 ```bash
 # 手元で
 git remote add dokku dokku@<Dokku サーバのホスト名>:tsumikura
@@ -222,11 +242,16 @@ git push dokku phase-5-dokku-deploy:main
 
 コードを変更せずに再デプロイしたいだけの場合 (`git push` は同じコミットなら「Everything up-to-date」になり何も起きない) は `dokku ps:rebuild tsumikura` を使う。
 
-## 6. Thruster の判断 (未決事項 #1)
+## 6. Thruster の判断 (決定済み: 案 B)
+
+> **決定 (2026-09-21)**: **案 B (Thruster を残す。`Dockerfile` を変更しない) で確定。**
+> 初回デプロイで `Dockerfile` をそのままにして問題なく動いた (`ports:set` も不要だった)。
+> この節は**確認だけ**行えばよい。下の「うまくいかない場合」以降 (案 A への切り替え差分) は
+> **参考 (使わなかった)** として残してある。
 
 査読 (Dokku / Thruster のソースと公式ドキュメント) で分かったこと: Dockerfile デプロイで Dokku はコンテナに `PORT` 環境変数を注入する (`EXPOSE 80` なら `PORT=80`)。一方 Thruster は自分の待ち受けポートに `PORT` を使わず `HTTP_PORT` (既定 80) を見て、子プロセス (Puma) を起動するときは `PORT` を `TARGET_PORT` (既定 3000) で上書きして渡す。したがって Dokku が注入する `PORT` と Thruster / Puma の間でポートの取り合いは起きにくい。残る懸念は非 root (uid 1000) での 80 番への bind だけで、Docker 20.10 以降のブリッジネットワークでは通常問題ない (1 節で確認済み。確認事項も参照)。
 
-**推奨: まず現状の Dockerfile (案 B: Thruster を残す、変更なし) のままデプロイし、症状が出たときだけ案 A に切り替える。** 5 節の push で既にこのイメージがデプロイされているので、ここでは確認だけ行う。
+現状の Dockerfile (案 B: Thruster を残す、変更なし) のままデプロイする。5 節の push で既にこのイメージがデプロイされているので、ここでは確認だけ行う。
 
 ```bash
 # サーバ側
@@ -235,9 +260,9 @@ curl -sI http://$APP_HOST/up
 dokku logs tsumikura -n 200
 ```
 
-**うまくいっている場合**: `ports:report` に `Ports map detected: http:80:80` が出る (`EXPOSE 80` からの自動検出。明示設定していないので `Ports map:` 自体は空でよい)。`curl` が `200` を返し (証明書がまだ無ければ http のまま)、ログに Puma や Thruster のエラーが無い。この場合は案 B のまま確定でよい。
+**うまくいっている場合**: `ports:report` に `Ports map detected: http:80:80` が出る (`EXPOSE 80` からの自動検出。明示設定していないので `Ports map:` 自体は空でよい)。`curl` が `200` を返し (証明書がまだ無ければ http のまま)、ログに Puma や Thruster のエラーが無い。**2026-09-21 の初回デプロイはこのとおりだったので、ここで完了。以下は読み飛ばしてよい。**
 
-**うまくいかない場合の症状**:
+**以下は参考 (使わなかった)。うまくいかない場合の症状**:
 
 - `dokku logs tsumikura -n 200` に `listen tcp :80: bind: permission denied` が出る (非 root ユーザーでの 80 番 bind に失敗している。Docker が古い場合に起きうる)
 - `curl` が `502 Bad Gateway` を返す、または繋がらない (nginx がコンテナの 80 番に接続できていない)
@@ -292,7 +317,7 @@ dokku ports:report tsumikura
 dokku ports:set tsumikura http:80:3000 https:443:3000
 ```
 
-切り替えたら [デプロイ構成](deployment.md#31-thruster-をどうするか-未決) の 3.1 節と [未決事項](../plan/open-questions.md) #1 を確定済みに更新する (12 節参照)。
+(案 A に切り替えた場合は) [デプロイ構成](deployment.md#31-thruster-をどうするか-決定済み-残す) の 3.1 節と [未決事項](../plan/open-questions.md) の決定済みを書き換える (12 節参照)。**2026-09-21 の初回デプロイでは切り替えなかった。**
 
 **参考: 既存の Dokku 上の Rails アプリの構成を見る**
 
@@ -304,6 +329,16 @@ dokku ports:report <既存アプリ名>
 既存アプリが Thruster を使っているか (`EXPOSE 80`)、Puma 直起動か (`EXPOSE 3000` など) を比べる材料になる。可能なら該当アプリのリポジトリの `Dockerfile` も見比べる。
 
 ## 7. Let's Encrypt の有効化
+
+> **既存の Dokku 環境では**: 他のアプリで既に Let's Encrypt を使っていると、**通知先メールアドレスが global に設定済み**で、**自動更新の cron も登録済み**のことが多い。その場合は該当の手順を飛ばす。まず確認する。
+>
+> ```bash
+> dokku config:get --global DOKKU_LETSENCRYPT_EMAIL   # 値が出れば global に設定済み (アプリ側の set は不要)
+> dokku letsencrypt:cron-job                          # 自動更新の cron が登録済みか
+> dokku letsencrypt:list                              # 既存アプリの証明書の一覧 (サブコマンドの有無は dokku letsencrypt:help で確認)
+> ```
+>
+> 2026-09-21 の初回デプロイでは既存環境の設定があったので、`letsencrypt:enable` だけを実施した。
 
 **デプロイが成功し、かつ `$APP_HOST` の DNS が反映されてから実行する** (1 節の `dig +short $APP_HOST` で確認する)。証明書の発行に失敗する状態で繰り返し試すと Let's Encrypt のレート制限に掛かるので、うまくいかないときは原因を確認してから再試行する。
 
@@ -384,6 +419,16 @@ dokku config:get tsumikura APP_HOST
 
 ## 10. DB バックアップの設定
 
+> **既存の Dokku 環境では**: 他のサービスで既にバックアップを回していると、**S3 の認証情報や保存先の決め方が既にある**ことが多い。その場合は下の `backup-auth` を既存の設定に合わせる (バケット名・region・エンドポイント URL を既存のものと揃える)。`backup-auth` は**サービスごと**の設定なので、`tsumikura-db` にも改めて実行する必要がある。既存サービスでの設定の仕方は次で確認する。
+>
+> ```bash
+> dokku postgres:list                                   # 既存のサービス名
+> dokku postgres:backup-schedule-cat <既存のサービス名>   # 既存のスケジュール (バケット名や cron 式の書き方の見本になる)
+> dokku postgres:help                                   # backup-auth に渡せる引数を確認する
+> ```
+>
+> 認証情報そのものを読み出すコマンドは無い (設定済みかどうかは `backup-auth` を実行し直して上書きするのが確実)。2026-09-21 の初回デプロイでは既存環境の設定に合わせて実施した。
+
 **初回デプロイと同時に設定する** (後回しにしない)。認証情報はシェル履歴に残さないよう `read -rs` で受け取る。
 
 ```bash
@@ -422,11 +467,12 @@ dokku run tsumikura bin/rails tsumikura:create_admin \
 
 ## 12. 終わったら
 
-決めたことを反映する。
+決めたことを反映する。**2026-09-21 の初回デプロイぶんは反映済み。**
 
-- **Thruster**: 6 節で決めた案 (A/B) を [デプロイ構成](deployment.md#31-thruster-をどうするか-未決) の 3.1 節と [未決事項](../plan/open-questions.md) の #1 に「決定済み」として書き戻す。案 A に切り替えた場合はこの手順書の 6 節の差分を実際に適用したことも書く。
-- **PostgreSQL のメジャーバージョン**: 2 節で確認した値が `compose.yaml` の `postgres:18` と異なっていた場合、その対応 (`compose.yaml` を揃えた、など) を [未決事項](../plan/open-questions.md) に追記する。
-- [実装計画](../plan/implementation-plan.md) の Phase 5 の TODO 状態を更新する。
+- **Thruster**: 案 B (残す) で確定。[デプロイ構成](deployment.md#31-thruster-をどうするか-決定済み-残す) の 3.1 節と [未決事項](../plan/open-questions.md) に反映済み。
+- **PostgreSQL のメジャーバージョン**: 18 で `compose.yaml` と一致していたので変更なし (2 節)。
+- [実装計画](../plan/implementation-plan.md) の Phase 5 は「サーバ側も完了 (2026-09-21)」に更新済み。
+- **まだ残っていること**は [未決事項](../plan/open-questions.md) の「残作業」を見る (PWA のホーム画面追加、日次ダイジェスト、iPhone / iPad の通知とパスキー、GitHub Actions の初回実行など)。
 
 ## 確認事項 (Dokku の挙動として確信が持てなかった点)
 

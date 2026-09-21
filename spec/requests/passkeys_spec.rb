@@ -9,7 +9,7 @@ RSpec.describe "パスキーの登録", type: :request do
 
   describe "POST /passkeys/options" do
     it "ログイン済みユーザーは登録オプションを取得できる" do
-      post options_passkeys_path, params: { current_password: "password" }, as: :json
+      post options_passkeys_path, params: { current_password: "family-password" }, as: :json
 
       expect(response).to have_http_status(:ok)
       options = response.parsed_body
@@ -20,7 +20,7 @@ RSpec.describe "パスキーの登録", type: :request do
     end
 
     it "discoverable credential (resident key) と生体認証 / PIN を要求する" do
-      post options_passkeys_path, params: { current_password: "password" }, as: :json
+      post options_passkeys_path, params: { current_password: "family-password" }, as: :json
 
       # residentKey: メール入力なしのログインに要る
       # userVerification: パスキー 1 つでログインできる以上、「持っているだけ」で入れてはいけない
@@ -30,17 +30,17 @@ RSpec.describe "パスキーの登録", type: :request do
     end
 
     it "初回に webauthn_id を生成し、2 回目は変えない" do
-      expect { post options_passkeys_path, params: { current_password: "password" }, as: :json }
+      expect { post options_passkeys_path, params: { current_password: "family-password" }, as: :json }
         .to change { user.reload.webauthn_id }.from(nil)
 
-      expect { post options_passkeys_path, params: { current_password: "password" }, as: :json }
+      expect { post options_passkeys_path, params: { current_password: "family-password" }, as: :json }
         .not_to change { user.reload.webauthn_id }
     end
 
     it "登録済みのパスキーを excludeCredentials に載せる (同じ端末で 2 つ作らせない)" do
       existing = create(:passkey, user: user)
 
-      post options_passkeys_path, params: { current_password: "password" }, as: :json
+      post options_passkeys_path, params: { current_password: "family-password" }, as: :json
 
       expect(response.parsed_body["excludeCredentials"].map { |c| c["id"] }).to eq [ existing.external_id ]
     end
@@ -48,7 +48,7 @@ RSpec.describe "パスキーの登録", type: :request do
     it "他人のパスキーは excludeCredentials に載せない" do
       create(:passkey)
 
-      post options_passkeys_path, params: { current_password: "password" }, as: :json
+      post options_passkeys_path, params: { current_password: "family-password" }, as: :json
 
       expect(response.parsed_body["excludeCredentials"]).to be_blank
     end
@@ -269,7 +269,7 @@ RSpec.describe "パスキーの登録", type: :request do
 
   describe "rate_limit" do
     it "登録オプションの取得に rate_limit が掛かっている" do
-      keys = rate_limit_keys { post options_passkeys_path, params: { current_password: "password" }, as: :json }
+      keys = rate_limit_keys { post options_passkeys_path, params: { current_password: "family-password" }, as: :json }
 
       expect(keys).to include(a_string_matching(%r{\Arate-limit:passkeys:options}))
     end

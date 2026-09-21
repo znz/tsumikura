@@ -2,7 +2,7 @@
 # (無効化ユーザーの拒否など SessionsController の振る舞いをテストから迂回させないため)。
 module AuthenticationHelper
   # spec/factories/users.rb の既定パスワード
-  DEFAULT_PASSWORD = "password".freeze
+  DEFAULT_PASSWORD = "family-password".freeze
 
   # request spec 用
   def sign_in(user, password: DEFAULT_PASSWORD)

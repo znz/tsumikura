@@ -46,7 +46,7 @@ RSpec.describe UsageRecord, type: :model do
 
     # 消費イベントが必ず今日以前にあることを予測が前提にしている
     it "未来の日付は保存できない (今日は可、明日は不可)" do
-      travel_to Time.zone.parse("2026-09-20 00:10") do
+      travel_to Time.current.change(hour: 0, min: 10) do
         expect(build(:usage_record, item: item, used_on: Date.current)).to be_valid
         expect(build(:usage_record, item: item, used_on: Date.current + 1)).not_to be_valid
       end

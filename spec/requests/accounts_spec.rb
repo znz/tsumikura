@@ -81,47 +81,47 @@ RSpec.describe "アカウント設定", type: :request do
   describe "PATCH /account/password" do
     it "現在のパスワードが正しければ変更できる" do
       patch account_password_path, params: {
-        current_password: "password", password: "newpassword", password_confirmation: "newpassword"
+        current_password: "family-password", password: "new-family-password", password_confirmation: "new-family-password"
       }
 
-      expect(user.reload.authenticate("newpassword")).to be_truthy
+      expect(user.reload.authenticate("new-family-password")).to be_truthy
       expect(response).to redirect_to account_path
     end
 
     it "変更後は新しいパスワードでログインできる" do
       patch account_password_path, params: {
-        current_password: "password", password: "newpassword", password_confirmation: "newpassword"
+        current_password: "family-password", password: "new-family-password", password_confirmation: "new-family-password"
       }
       sign_out
 
-      sign_in user, password: "newpassword"
+      sign_in user, password: "new-family-password"
 
       expect(response).to redirect_to root_url
     end
 
     it "現在のパスワードが違えば変更できない" do
       patch account_password_path, params: {
-        current_password: "wrong-password", password: "newpassword", password_confirmation: "newpassword"
+        current_password: "wrong-password", password: "new-family-password", password_confirmation: "new-family-password"
       }
 
-      expect(user.reload.authenticate("newpassword")).to be false
+      expect(user.reload.authenticate("new-family-password")).to be false
       expect(flash[:alert]).to be_present
     end
 
     it "現在のパスワードが空なら変更できない" do
       patch account_password_path, params: {
-        current_password: "", password: "newpassword", password_confirmation: "newpassword"
+        current_password: "", password: "new-family-password", password_confirmation: "new-family-password"
       }
 
-      expect(user.reload.authenticate("newpassword")).to be false
+      expect(user.reload.authenticate("new-family-password")).to be false
     end
 
     it "確認用のパスワードが一致しなければ変更できない" do
       patch account_password_path, params: {
-        current_password: "password", password: "newpassword", password_confirmation: "mismatched"
+        current_password: "family-password", password: "new-family-password", password_confirmation: "mismatched"
       }
 
-      expect(user.reload.authenticate("newpassword")).to be false
+      expect(user.reload.authenticate("new-family-password")).to be false
       expect(flash[:alert]).to be_present
     end
 
@@ -129,7 +129,7 @@ RSpec.describe "アカウント設定", type: :request do
       short = "a" * (User::MINIMUM_PASSWORD_LENGTH - 1)
 
       patch account_password_path, params: {
-        current_password: "password", password: short, password_confirmation: short
+        current_password: "family-password", password: short, password_confirmation: short
       }
 
       expect(user.reload.authenticate(short)).to be false
@@ -140,18 +140,18 @@ RSpec.describe "アカウント設定", type: :request do
     # 弾かないと「何も変わっていないのに変更しました」になる
     it "新しいパスワードが空なら変更できない" do
       patch account_password_path, params: {
-        current_password: "password", password: "", password_confirmation: ""
+        current_password: "family-password", password: "", password_confirmation: ""
       }
 
-      expect(user.reload.authenticate("password")).to be_truthy
+      expect(user.reload.authenticate("family-password")).to be_truthy
       expect(flash[:alert]).to be_present
       expect(flash[:notice]).to be_blank
     end
 
     it "新しいパスワードが送られてこなければ変更できない" do
-      patch account_password_path, params: { current_password: "password" }
+      patch account_password_path, params: { current_password: "family-password" }
 
-      expect(user.reload.authenticate("password")).to be_truthy
+      expect(user.reload.authenticate("family-password")).to be_truthy
       expect(flash[:alert]).to be_present
       expect(flash[:notice]).to be_blank
     end
@@ -162,7 +162,7 @@ RSpec.describe "アカウント設定", type: :request do
       user.sessions.create!(ip_address: "192.0.2.11", user_agent: "もうひとつのブラウザ")
 
       patch account_password_path, params: {
-        current_password: "password", password: "newpassword", password_confirmation: "newpassword"
+        current_password: "family-password", password: "new-family-password", password_confirmation: "new-family-password"
       }
 
       expect(user.sessions.reload).to contain_exactly(current_session)
@@ -175,7 +175,7 @@ RSpec.describe "アカウント設定", type: :request do
 
       expect {
         patch account_password_path, params: {
-          current_password: "wrong-password", password: "newpassword", password_confirmation: "newpassword"
+          current_password: "wrong-password", password: "new-family-password", password_confirmation: "new-family-password"
         }
       }.not_to change { user.sessions.count }
     end
@@ -186,7 +186,7 @@ RSpec.describe "アカウント設定", type: :request do
 
       expect {
         patch account_password_path, params: {
-          current_password: "password", password: "newpassword", password_confirmation: "newpassword"
+          current_password: "family-password", password: "new-family-password", password_confirmation: "new-family-password"
         }
       }.not_to change { other.sessions.count }
     end
@@ -194,7 +194,7 @@ RSpec.describe "アカウント設定", type: :request do
     it "総当たりを防ぐため rate_limit が掛かっている" do
       keys = rate_limit_keys do
         patch account_password_path, params: {
-          current_password: "password", password: "newpassword", password_confirmation: "newpassword"
+          current_password: "family-password", password: "new-family-password", password_confirmation: "new-family-password"
         }
       end
 

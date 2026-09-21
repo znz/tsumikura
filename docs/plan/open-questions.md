@@ -7,15 +7,22 @@
 全 13 フェーズの実装とテストは終わっている。ここに残るのは**この環境では実行できなかったこと**で、
 コードの不足ではない。上から順に消していくと v1 の運用が始められる。
 
-| # | 残作業 | 何をするか | どこを見るか |
-|---|---|---|---|
-| A | **GitHub Actions の初回実行** | リポジトリを push して CI を 1 回通す。`ruby/setup-ruby` が `.ruby-version` の 4.0.7 を取得できるかはここで初めて分かる。取得できなければ利用可能な最新パッチに下げる | [開発環境](../ops/development.md#8-ci) / 下の「決定済み」 |
-| B | **`js: true` の system spec の CI 初回実行** | 実ブラウザの system spec (初期パスワードの表示など) は手元では Chrome を用意できていない。CI で初めて走るので、最初の 1 回は結果を確かめる。落ちたら `config/ci.rb` と `.github/workflows/ci.yml` の artifact の取り回しを見る | [開発環境](../ops/development.md#8-ci) |
-| C | **Dokku 初回デプロイ** | [初回デプロイ手順書](../ops/first-deploy.md) を上から順に実行する。Thruster を残すか外すか (未決 #1) はこのときに実地で決まる | [初回デプロイ手順書](../ops/first-deploy.md) |
-| D | **パスキーの実機確認** | パスキーは HTTPS の実機でしか確かめられない (iPhone の Face ID / Android / PC のセキュリティキー / conditional UI)。デプロイ後に手順どおり試す。**下の注意も読むこと** | [認証](../spec/05-auth.md#実機での確認手順-https-の本番環境で) |
-| E | **Web Push の実機確認** | 通知も実機が要る (iOS は「ホーム画面に追加」が前提)。VAPID 鍵を入れて `/account` から登録し、テスト送信を受け取る | [通知](../spec/04-notifications.md) / [初回デプロイ手順書 3.1](../ops/first-deploy.md#31-vapid-鍵-web-push) |
-| F | **アイコンの差し替え** | `public/icon.png` は Rails 既定のまま、`public/icon.svg` は暫定。512px / 192px の PNG を用意して差し替え、manifest に 192px の行を足す。この環境ではバイナリを作れない | 下の未決 #12 |
-| G | **バックアップの設定** | DB のバックアップは初回デプロイと同時に設定する (後回しにしない) | [初回デプロイ手順書](../ops/first-deploy.md) |
+**2026-09-21 に Dokku へデプロイして動作確認した** (`phase-13-passkeys` を `git push dokku phase-13-passkeys:main`。
+GitHub にはまだ push していない)。済んだものは「済」と日付を残す。
+
+| # | 残作業 | 状況 | 何をするか | どこを見るか |
+|---|---|---|---|---|
+| A | **GitHub Actions の初回実行** | **残** | リポジトリを push して CI を 1 回通す。`ruby/setup-ruby` が `.ruby-version` の 4.0.7 を取得できるかはここで初めて分かる。取得できなければ利用可能な最新パッチに下げる | [開発環境](../ops/development.md#8-ci) / 下の「決定済み」 |
+| B | **`js: true` の system spec の CI 初回実行** | **残** (12 件が未実行のまま) | 実ブラウザの system spec (初期パスワードの表示など) は手元では Chrome を用意できていない。CI で初めて走るので、最初の 1 回は結果を確かめる。落ちたら `config/ci.rb` と `.github/workflows/ci.yml` の artifact の取り回しを見る | [開発環境](../ops/development.md#8-ci) |
+| C | **Dokku 初回デプロイ** | **済 (2026-09-21)** | predeploy (`db:prepare`) と `/up` のヘルスチェックはどちらも成功。Thruster は変更なしで動いた (未決 #1 を決定済みに移した)。PostgreSQL は 18 で `compose.yaml` と一致 | [初回デプロイ手順書](../ops/first-deploy.md) |
+| C2 | **HTTPS とログインまわりの確認** | **済 (2026-09-21)** | Let's Encrypt の発行、http → https のリダイレクト、`session_id` Cookie の `Secure` / `HttpOnly` / `SameSite=Lax`、管理者の作成、ログイン、家族アカウントの追加 (初期パスワードの 1 度だけの表示)、品目とマスタ、購入の記録、使用の入力、棚卸、廃棄、買い物リスト。**本番のブラウザで JS のエラーが出ないことも確認済み** (importmap も Stimulus も正常。ワンタップ使用のトースト・取り消し・約 8 秒での自動消去、入数 × パック数の切り替え、チェック時のスクロール維持まで期待どおり) | [初回デプロイ手順書 9 節](../ops/first-deploy.md#9-動作確認チェックリスト) |
+| D | **パスキーの実機確認** | **一部済 (2026-09-21)** | **PC は済**: 登録でき、「パスキーでログイン」ボタンもメール欄の入力候補 (conditional UI) も動いた。**残: iPhone / iPad (Safari のユーザー操作要件を含む)、Android**。**下の注意も読むこと** | [認証](../spec/05-auth.md#実機での確認手順-https-の本番環境で) |
+| E | **Web Push の実機確認** | **一部済 (2026-09-21)** | **Android は済**: VAPID 鍵を設定して購読でき、テスト送信が届き、通知のタップでアプリが開いた。**残: iPhone / iPad、PC ブラウザ、毎朝 8 時の日次ダイジェスト (まだ朝をまたいでいない)** | [通知](../spec/04-notifications.md#7-実機でしか確かめられないこと) / [初回デプロイ手順書 3.1](../ops/first-deploy.md#31-vapid-鍵-web-push) |
+| E2 | **ホーム画面への追加 (PWA)** | **残** | manifest の `icons` を差し替えたので、Android / iOS で「ホーム画面に追加」してアイコンが「つ」のものになることを見る (iOS の通知はこれが前提) | [通知](../spec/04-notifications.md#1-pwa-の有効化) |
+| E3 | **予測表示の確認** | **残** | ダッシュボードと品目詳細の予測は、使用履歴がたまってから確かめる (いまは `unknown` が多いのが正しい) | [予測](../spec/02-forecast.md) |
+| F | **アイコンの差し替え** | **済 (2026-09-21)** | `public/icon.svg` を原本に、`script/generate_icons.sh` が 512 / 192 / maskable / apple-touch の PNG を作る。manifest と `<link rel="apple-touch-icon">` も差し替え済み | 下の「決定済み」 |
+| G | **バックアップの設定** | **済 (2026-09-21)** | 既存の Dokku 環境の設定に合わせて実施した。Solid Queue の起動ログも確認済み | [初回デプロイ手順書 10 節](../ops/first-deploy.md#10-db-バックアップの設定) |
+| H | **VAPID 鍵の退避** | **済 (2026-09-21)** | 手元で生成して退避したうえで `dokku config:set` した (下の決定済み #7 のとおり) | [初回デプロイ手順書 3.1](../ops/first-deploy.md#31-vapid-鍵-web-push) |
 
 ### パスキーの実機確認で特に見るところ
 
@@ -51,9 +58,11 @@ Stimulus の `data-*` 属性とボタンが出ていることを request spec �
 
 ## 2. 未決 (決めるタイミングが来たら決める)
 
+番号は振り直さない (他の文書から参照されているため)。決まったものは下の「決定済み」へ移し、
+そこに「旧 #N」と書いてある。いま欠番なのは #1 / #10 / #12 / #13。
+
 | # | 項目 | リスク / 論点 | 推奨 | 決めるフェーズ |
 |---|---|---|---|---|
-| 1 | **Thruster を残すか外すか** | 査読 (Dokku / Thruster のソースと公式ドキュメントで確認): Dokku は `EXPOSE` の先頭ポートを `PORT` としてコンテナに注入するが、Thruster は自分の待ち受けに `HTTP_PORT` を使い、Puma には `PORT` を `TARGET_PORT` で上書きして渡すため、ポートの取り合いは起きにくい。残る懸念は非 root (uid 1000) での 80 番 bind (Docker 20.10 以降なら通常問題ない) | 初回デプロイでまず案 B (現状の Dockerfile のまま、変更なし) を試し、`bind: permission denied` や 502 が出たときだけ案 A (外して Puma 直起動・`EXPOSE 3000` + `ports:set`) に倒す。両案の詳細は [デプロイ](../ops/deployment.md#31-thruster-をどうするか-未決) | 5 |
 | 2 | **通知の配信時刻** | 朝 8 時が家庭の生活リズムに合うか不明 | 既定は `config/tsumikura.yml` の `digest_hour: 8`。`config/recurring.yml` を書き換えて再デプロイすれば変えられる。画面からの変更は v2 | 12 |
 | 3 | **`unknown` の UI 表現** | 「判定できません」が多いと不安になる | バッジは「—」、詳細に「データ収集中 — 使用記録がたまると予測を開始します」と出す。ダッシュボードの要購入件数には含めない | 10 |
 | 4 | **消費ペースの直近重視** | 単一窓の単純平均は、生活パターンの変化への追随が遅い | v1 は単一窓のまま運用する。追随が悪ければ短期窓・長期窓の合成に差し替える (`Forecast::Calculator` が PORO なので spec の追加だけで検証できる) | 運用後 |
@@ -62,16 +71,18 @@ Stimulus の `data-*` 属性とボタンが出ていることを request spec �
 | 7 | **VAPID 鍵のバックアップ** | 鍵を失うと全購読が無効になり、家族全員が再購読することになる | **手元で生成してからパスワードマネージャ等へ退避し、そのあと `dokku config:set` する** (サーバに生成させない)。手順は [初回デプロイ手順書 3.1 節](../ops/first-deploy.md#31-vapid-鍵-web-push)。`dokku config:show` からも復元できるが、アプリを作り直すと失われる | 12 |
 | 8 | **Dokku 上での migration 失敗** | `app.json` の predeploy が落ちるとデプロイが止まる (正しい挙動) | 破壊的 migration は 2 段階デプロイ (カラム追加 → コード変更 → 旧カラム削除) にする。家庭用なので通常は不要だが、方針として明記しておく | 随時 |
 | 9 | **`json` gem を 3 未満に固定している** | json 3 は `JSON.parse` のオプションをキーワード引数でしか受けないが、ActiveSupport 8.1.3.1 はハッシュを位置引数で渡す。固定しないと spec が 70 件落ちる。固定したままだと json 3 の修正・改善を取りこぼす | `Gemfile` の `gem "json", "< 3"` を維持する。**Rails を更新したらこの行を外して `bin/rspec` を流し**、通るなら固定を解除する ([実装計画](implementation-plan.md) 付録 A) | Rails 更新時 |
-| 10 | **パスワードの最小長 (現在 8 文字)** | 家庭用とはいえ公開インターネットに出る。8 文字は NIST SP 800-63B の下限であって推奨値ではない | まずは 8 文字で運用する (bcrypt + `rate_limit to: 10, within: 3.minutes`、管理者発行の初期パスワードは約 92 bit)。**Phase 13 でパスキーが入ったが、8 文字のまま据え置いた**: パスキーは追加手段でパスワードは常に有効なので、長さの根拠は変わらない。引き上げると既存ユーザー全員の再設定が要る割に、常用がパスキーに移れば手入力の機会自体が減る。実運用で不正ログインの試行が見えたら引き上げる ([認証](../spec/05-auth.md#パスワードの要件)) | 運用後 |
 | 11 | **確定済みの棚卸の取り消し** | 棚卸のマイナス差分は `counted_on` の 1 日に全量が消費として計上されるので、打ち間違い (12 を 1 と入れる) はそのまま予測に残り続ける。いまは確定済みの棚卸を取り消す手段が無く、直すには逆向きの棚卸をもう 1 回するしかない | Phase 9 では**確認画面で大きく減る差分に注意の印**を出して入力時に気づかせる (`StockTakeEntry#large_decrease?`: 記録在庫の半分以上かつ 2 以上の減少)。取り消し機能は、実運用で打ち間違いが起きてから検討する (movement をまとめて消して再計算するだけなので、あとからでも足せる) | 運用後 |
-| 12 | **PWA のアイコン画像** | `public/icon.png` は Rails 既定のアイコンのまま、`public/icon.svg` は「つ」の字だけの暫定版。ホーム画面に追加したときのアイコンが「つみくら」のものにならない。Android は 192px の PNG を好む (manifest には今は 512px の PNG と SVG しか載っていない) | **ユーザーへの依頼**: 512px と 192px の PNG (と必要なら maskable 用の余白付き) を用意して `public/icon.png` / `public/icon-192.png` に置き、`app/views/pwa/manifest.json.erb` の `icons` に 192px の 1 行を足す。この環境ではバイナリを作れないので実装側では差し替えていない。**安全域 (周囲 20%) を持つアイコンにしたら、manifest に `purpose: "maskable"` の行も足す** (今は Rails 既定のアイコンに安全域が無いので外してある)。[通知](../spec/04-notifications.md#1-pwa-の有効化) | 12 (実装済みだが画像だけ残り) |
-| 13 | **ログアウトしたときに、その端末の購読を消すか** | ログアウトしても購読は残るので、その端末には通知が届き続ける。共用の端末を使ったあとに気づきにくい | 今は消さない (通知の中身は世帯で共通で、変わるのは種別の ON/OFF だけ。止めたいときは `/account` の「通知を受け取る端末」から削除できる)。共用端末で使うようになったら、`SessionsController#destroy` でその端末の購読も消すことを検討する。[通知](../spec/04-notifications.md#5-割り切っていること) | 運用後 |
 | 14 | **購読の再同期が `/account` でしか働かない** | Push サービス側で購読が作り直されると (`pushsubscriptionchange`)、次に `/account` を開くまで通知が止まる。1 日 1 通なので、止まっていることに気づきにくい | 今は割り切る (Service Worker からは新しい購読をサーバへ送れない)。気になったら、購読の再同期だけをレイアウト常駐の小さな Stimulus controller に出して全ページで走らせる。[通知](../spec/04-notifications.md#5-割り切っていること) | 運用後 |
 
 ## 3. 決定済み (理由を残す)
 
 | 項目 | 決定 | 理由 / 参照 |
 |---|---|---|
+| **Thruster を残すか外すか** (旧 #1) | **残す (案 B)。`Dockerfile` / `Gemfile` / `bin/thrust` は変更しない** (2026-09-21 に Dokku で確認) | 初回デプロイで現状の Dockerfile のまま動いた。`listen tcp :80: bind: permission denied` も 502 も出ず、`EXPOSE 80` からの自動検出だけで済んだ (`ports:set` の明示も不要)。案 A (外して Puma 直起動) の切り替え手順は「参考 (使わなかった)」として [デプロイ](../ops/deployment.md#31-thruster-をどうするか-決定済み-残す) 3.1 節と [初回デプロイ手順書](../ops/first-deploy.md#6-thruster-の判断-決定済み-案-b) 6 節に残してある |
+| **本番の PostgreSQL のメジャーバージョン** | **18。`compose.yaml` は変更しない** (2026-09-21 に確認) | dokku-postgres が作ったサービスが 18 で、開発用 `compose.yaml` の `postgres:18` と一致していた |
+| **パスワードの最小長** (旧 #10) | **12 文字** (`User::MINIMUM_PASSWORD_LENGTH`。2026-09-21 に 8 から引き上げ) | 公開インターネットに出したので、NIST SP 800-63B の**下限**である 8 文字のままにしない。常用手段がパスキーに移って手入力の機会が減ったので、長くしても実害が小さい。**検証は `allow_nil` でパスワードを設定・変更するときだけ走る**ので、引き上げ前の短いパスワードのユーザーはそのままログインでき、パスワード以外の属性も更新できる (再設定は強制しない)。管理者が発行する生成パスワード (19 文字) と `tsumikura:create_admin` の自動生成は影響なし。[認証](../spec/05-auth.md#パスワードの要件) |
+| **PWA のアイコン画像** (旧 #12) | **`public/icon.svg` を原本に、`script/generate_icons.sh` が PNG を生成する。デザインを変えるときは `icon.svg` を直してスクリプトを実行し直す** | 生成物は `icon.png` (512px・角丸) / `icon-192.png` (192px) / `icon-maskable.png` (512px・全面塗り・安全域に収めた) / `apple-touch-icon.png` (180px・全面塗り)。manifest は **`any` と `maskable` を別エントリ**にする (兼ねさせると Android の円形の切り抜きで端が欠ける)。通知のアイコンは 192px を使い、`badge` は単色のシルエット画像が要るので付けない。スクリプトは使い捨ての Docker コンテナ (rsvg-convert) で描くので、開発機に画像ツールを入れなくてよい。[通知](../spec/04-notifications.md#1-pwa-の有効化) |
+| **ログアウトしたときに、その端末の購読を消すか** (旧 #13) | **消す。ただし「メニューのログアウト」だけ** | 共用の端末を使ったあと、ログアウトしたのに通知が届き続けるのに気づきにくい。`logout_controller.js` が `submit` を横取りして端末側の購読を解除し、`endpoint` を hidden で送る。サーバは `Current.user` の一致する購読だけを消す。**どの段階で失敗してもログアウトは進める** (未対応・未登録・例外・2 秒のタイムアウト)。JS の無い環境、「このデバイス以外をすべてログアウト」、別端末からのセッションの個別失効では購読は残る (セッションと購読を紐づけていないため)。[通知](../spec/04-notifications.md#5-割り切っていること) |
 | **Ruby 4.0.7 の CI 可用性** | **`.ruby-version` は 4.0.7 のまま。GitHub Actions の初回実行で最終確認** | `ruby/setup-ruby` が参照する `ruby-builder-versions.json` に `4.0.7` が載っていることは確認した (2026-09-19)。`@v1` タグで実際に取得できるかは CI の初回実行で確かめる。取得できなければ利用可能な最新パッチに下げる。[開発環境](../ops/development.md#8-ci) |
 | **RuboCop と `spec/` ディレクトリ** | **除外設定は不要** | Phase 2 で追加した `spec/` 一式 (support / requests / system) を含め `bin/rubocop` が 32 ファイル・0 件で通った。`.rubocop.yml` は変更していない |
 | **Tailwind インストーラの出力先** | **レイアウト変更不要。`stylesheet_link_tag :app` のまま** | レイアウトに既に `:app` があったため、インストーラは別枠のタグを追加しなかった。`Tailwindcss::Engine` が `app/assets/tailwind` (ソース) を `assets.excluded_paths` に加えるので、`:app` が拾うのはビルド成果物の `app/assets/builds/tailwind.css` だけ。[開発環境](../ops/development.md#5-tailwind-css) |

@@ -154,7 +154,7 @@ RSpec.describe "tsumikura:create_admin", type: :task do
 
       expect(password).to be_present
       expect(User.last.authenticate(password)).to be_truthy
-      expect(User.last.authenticate("password")).to be false
+      expect(User.last.authenticate("family-password")).to be false
     end
 
     it "ADMIN_RESET_PASSWORD=1 で対象ユーザーのセッションが失効する" do

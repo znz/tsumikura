@@ -42,7 +42,7 @@
 | 追加機能 | カテゴリ・保管場所 / 買い物リスト / 価格 (税込合計)・購入店 |
 | 技術 | RSpec + factory_bot (t_wada 流 TDD) / Tailwind CSS (tailwindcss-rails) / 日本語のみ (`:ja`) / `Asia/Tokyo` |
 
-未確定なのは **Thruster を残すかどうか** (Dokku 初回デプロイ時に決める) など少数のみ。[未決事項](../plan/open-questions.md) を参照。
+Thruster は初回デプロイ (2026-09-21) で**残すと確定**した。未確定なものは少数のみ。[未決事項](../plan/open-questions.md) を参照。
 
 ## 4. 用語
 

@@ -42,8 +42,14 @@
   <% end %>
 
   <li>
-    <%= button_to "ログアウト", session_path, method: :delete,
-          class: "flex min-h-14 w-full items-center px-4 py-3 text-left text-red-600 hover:bg-slate-50" %>
+    <%# ログアウトでこの端末の Web Push の購読も解除する (docs/spec/04-notifications.md 5 節)。
+        JS が無い / 解除できないときは push_endpoint が空のまま送られ、ふつうにログアウトする %>
+    <%= form_with url: session_path, method: :delete,
+          data: { controller: "logout", action: "submit->logout#submit" } do |form| %>
+      <%= form.hidden_field :push_endpoint, value: "", data: { logout_target: "endpoint" } %>
+      <%= form.button "ログアウト",
+            class: "flex min-h-14 w-full items-center px-4 py-3 text-left text-red-600 hover:bg-slate-50" %>
+    <% end %>
   </li>
 </ul>
 

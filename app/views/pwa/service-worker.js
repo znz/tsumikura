@@ -18,6 +18,10 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim())
 })
 
+// 通知のアイコン。512px は通知の枠に対して大きすぎるので 192px を使う。
+// badge (Android の小さなシルエット) は単色の専用画像が要るので、用意するまで付けない
+const ICON = "/icon-192.png"
+
 // 配信は DailyDigestJob / NotificationTestsController が { title, options } を送る。
 // **必ず通知を出す**: userVisibleOnly の購読で通知を出さない push が続くと、
 // ブラウザ (特に Safari) が購読を取り消してしまう
@@ -31,7 +35,8 @@ self.addEventListener("push", (event) => {
   }
 
   const title = payload.title || "つみくら"
-  const options = payload.options || { body: "つみくらからのお知らせがあります。" }
+  // payload が壊れていてもアイコンの無い通知にしない
+  const options = { icon: ICON, ...(payload.options || { body: "つみくらからのお知らせがあります。" }) }
 
   event.waitUntil(self.registration.showNotification(title, options))
 })

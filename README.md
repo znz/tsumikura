@@ -4,7 +4,7 @@
 
 家庭の消耗品 (トイレットペーパー、洗剤、電池、常備薬…) の在庫を家族で共有し、「そろそろ買う」を教えてくれる Web アプリ。名前は「積み倉」(家にあるストック) と「積み暮ら(し)」(日々の積み重ね) を重ねたもので、表示は常にひらがなで「つみくら」と書く。
 
-> **現在の状態: [実装計画](docs/plan/implementation-plan.md) の全 13 フェーズの実装が完了。** ローカルの `bin/ci` (rubocop、脆弱性監査、brakeman、RSpec、system spec、seeds) は緑。ただし本番ではまだ一度も動かしていない。残っているのは、GitHub Actions の初回実行 (Chrome が要る system spec はそこで初めて走る)、Dokku への初回デプロイ ([手順書](docs/ops/first-deploy.md))、通知とパスキーの実機確認 (ブラウザ側の JavaScript はまだ一度も実行していない)、アイコン画像の差し替え。一覧は [未決事項と残作業](docs/plan/open-questions.md) を参照。
+> **現在の状態: [実装計画](docs/plan/implementation-plan.md) の全 13 フェーズを実装し、Dokku の本番環境で動かしている (2026-09-21 に初回デプロイ)。** 本番で確認できたのは、デプロイ一式 (Thruster、predeploy、HTTPS)、基本機能とブラウザ側の JavaScript、Android での通知、PC でのパスキー。まだ確認できていないのは、GitHub Actions (未 push。Chrome が要る system spec はそこで初めて走る)、毎朝の日次ダイジェスト、iPhone / iPad での通知とパスキー、使用履歴がたまってからの予測の表示。一覧は [未決事項と残作業](docs/plan/open-questions.md) を参照。
 
 ## 主な機能
 

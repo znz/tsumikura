@@ -53,13 +53,13 @@ RSpec.describe StockMovement, type: :model do
 
     describe "未来日" do
       it "今日の記録は保存できる" do
-        travel_to Time.zone.parse("2026-09-20 23:30") do
+        travel_to Time.current.change(hour: 23, min: 30) do
           expect(build(:stock_movement, occurred_on: Date.current)).to be_valid
         end
       end
 
       it "明日の記録は保存できない" do
-        travel_to Time.zone.parse("2026-09-20 00:10") do
+        travel_to Time.current.change(hour: 0, min: 10) do
           movement = build(:stock_movement, occurred_on: Date.current + 1)
 
           expect(movement).not_to be_valid

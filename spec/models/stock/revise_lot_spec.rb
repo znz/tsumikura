@@ -68,7 +68,7 @@ RSpec.describe Stock::ReviseLot, type: :model do
     end
 
     it "未来の日付には編集できない" do
-      travel_to Time.zone.parse("2026-09-20 00:10") do
+      travel_to Time.current.change(hour: 0, min: 10) do
         result = described_class.call(lot, acquired_on: Date.current + 1)
 
         expect(result.errors[:acquired_on]).to be_present

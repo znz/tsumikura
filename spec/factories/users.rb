@@ -2,7 +2,7 @@ FactoryBot.define do
   factory :user do
     sequence(:email_address) { |n| "family#{n}@example.com" }
     name { "かぞく" }
-    password { "password" }
+    password { "family-password" }
 
     trait :admin do
       name { "かんりしゃ" }

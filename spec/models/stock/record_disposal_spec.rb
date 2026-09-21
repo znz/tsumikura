@@ -131,7 +131,7 @@ RSpec.describe Stock::RecordDisposal, type: :model do
     before { create(:lot, item: item, initial_quantity: 5) }
 
     it "未来の日付では記録できない" do
-      travel_to Time.zone.parse("2026-09-20 00:10") do
+      travel_to Time.current.change(hour: 0, min: 10) do
         disposal = nil
         expect { disposal = dispose(occurred_on: Date.current + 1) }
           .not_to change { StockMovement.count }

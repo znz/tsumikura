@@ -57,7 +57,7 @@
 - `test/` 削除、`spec/support/` (factory_bot, capybara) 整備、`config.generators` 設定
 - `.github/workflows/ci.yml` と `config/ci.rb` を RSpec 向けに修正
 - `tailwindcss-rails` 導入、レイアウトの日本語化 (`lang="ja"`、タイトル「つみくら」)
-- **Ruby 4.0.7 が `ruby/setup-ruby` で使えるかをここで確認する** ([未決事項](open-questions.md) #1)
+- **Ruby 4.0.7 が `ruby/setup-ruby` で使えるかをここで確認する** ([未決事項](open-questions.md) の「残作業」A)
 
 **TDD TODO**
 
@@ -287,14 +287,20 @@ rake タスク (spec/tasks/create_admin_spec.rb)
 
 ---
 
-## Phase 5: Dokku 初回デプロイ (ウォーキングスケルトン)
+## Phase 5: Dokku 初回デプロイ (ウォーキングスケルトン) — **サーバ側も完了 (2026-09-21)**
 
 **ゴール**: ログインだけできる状態を本番に出し、デプロイ経路を早期に固める。
 
+**結果 (2026-09-21)**: 全 13 フェーズを実装したうえで Dokku にデプロイし、下の「動作確認」をすべて満たした。
+Thruster は `Dockerfile` を変えずにそのまま動いた (案 B で確定)。PostgreSQL は 18 で `compose.yaml` と一致。
+predeploy (`db:prepare`)、`/up` のヘルスチェック、Let's Encrypt、http → https の 301、
+`session_id` Cookie の `Secure` / `HttpOnly` / `SameSite=Lax`、Solid Queue の起動ログ、DB バックアップ、
+いずれも確認済み。詳細は [未決事項](open-questions.md) の「残作業」を参照。
+
 **作業**
 
-- **リポジトリ側の準備は完了**: `app.json` (predeploy / healthchecks) 作成、`config/environments/production.rb` の `assume_ssl` / `force_ssl` / `ssl_options` / `hosts` / `host_authorization` を有効化、`bin/docker-entrypoint` から `db:prepare` を削除。Thruster (案 A / 案 B) は未決のまま `Dockerfile` / `Gemfile` / `bin/thrust` は変更していない ([未決事項](open-questions.md) #1)。切り替え差分は [初回デプロイ手順書](../ops/first-deploy.md) の 6 節にそのまま適用できる形で用意した
-- **サーバ側は [初回デプロイ手順書](../ops/first-deploy.md) に従ってユーザーが実施する** (Dokku サーバへの接続が要るため): Thruster の実地判断、Dokku 側セットアップ (app 作成、postgres link、domains、letsencrypt、config:set)、初回デプロイ + `dokku run ... tsumikura:create_admin`、**DB の日次バックアップ設定 (後回しにしない)**。完了したら Thruster と PostgreSQL のメジャーバージョンの決定を [未決事項](open-questions.md) に反映する
+- **リポジトリ側の準備は完了**: `app.json` (predeploy / healthchecks) 作成、`config/environments/production.rb` の `assume_ssl` / `force_ssl` / `ssl_options` / `hosts` / `host_authorization` を有効化、`bin/docker-entrypoint` から `db:prepare` を削除。Thruster は **案 B で確定したので `Dockerfile` / `Gemfile` / `bin/thrust` は変更していない** ([未決事項](open-questions.md) の「決定済み」)。案 A の切り替え差分は参考として [初回デプロイ手順書](../ops/first-deploy.md) の 6 節に残してある
+- **サーバ側は [初回デプロイ手順書](../ops/first-deploy.md) に従ってユーザーが実施した (完了)**: Thruster の実地判断 (案 B で確定)、Dokku 側セットアップ (app 作成、postgres link、domains、letsencrypt、config:set)、初回デプロイ + `dokku run ... tsumikura:create_admin`、**DB の日次バックアップ設定**。既存の Dokku 環境だったため、domain / letsencrypt / バックアップ認証は既存の global な設定に合わせて読み替えた (手順書の各節に注記を追加済み)。Thruster と PostgreSQL のメジャーバージョンの決定は [未決事項](open-questions.md) に反映済み
 
 **動作確認**: `https://tsumikura.example.com/up` が 200、ログインできる、`dokku logs` にジョブ supervisor の起動ログが出る、バックアップが 1 回取れている。
 **Dokku の nginx が http → https に 301 リダイレクトすること**、**HSTS ヘッダが付くこと**、**ログイン後の `session_id` Cookie に `secure` (`force_ssl` が付ける) が付くこと**を確認する ([初回デプロイ手順書](../ops/first-deploy.md#9-動作確認チェックリスト))。
@@ -1135,7 +1141,9 @@ Phase 11 からの申し送り (docs/spec/02-forecast.md 14 節)
 **動作確認**: 本番にデプロイし、スマホをホーム画面に追加してテスト送信が届く
 (手順は [通知](../spec/04-notifications.md#7-実機でしか確かめられないこと) の 7 節)。
 
-**残り**: アイコン画像 (512px / 192px の PNG) の差し替え。[未決事項](open-questions.md)。
+**アイコン (2026-09-21 に対応済み)**: 原本の `public/icon.svg` から `script/generate_icons.sh` が
+512px / 192px / maskable / apple-touch の PNG を作る。manifest は `any` と `maskable` を別エントリにし、
+通知のアイコンは 192px を使う ([未決事項](open-questions.md) の「決定済み」)。
 
 ---
 

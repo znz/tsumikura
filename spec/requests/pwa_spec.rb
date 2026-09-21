@@ -38,6 +38,30 @@ RSpec.describe "PWA", type: :request do
       end
     end
 
+    # Android は 192px の PNG を好む (無いと 512px を縮めるのでぼやける)
+    it "192px の PNG を載せる" do
+      get pwa_manifest_path(format: :json)
+
+      icons = JSON.parse(response.body).fetch("icons")
+      expect(icons).to include(a_hash_including("src" => "/icon-192.png", "sizes" => "192x192"))
+    end
+
+    # maskable は「全面塗り + 安全域」の別画像なので、any と同じエントリにまとめない
+    # (まとめると Android が円形に切り抜いたときに図柄の端が欠ける)
+    it "maskable のアイコンを any とは別のエントリで載せる" do
+      get pwa_manifest_path(format: :json)
+
+      icons = JSON.parse(response.body).fetch("icons")
+      maskable = icons.select { |icon| icon["purpose"].to_s.split.include?("maskable") }
+
+      expect(maskable.length).to eq 1
+      expect(maskable.first).to include(
+        "src" => "/icon-maskable.png", "sizes" => "512x512", "purpose" => "maskable"
+      )
+      # 通常のアイコンに maskable を兼ねさせない (安全域が無いので端が欠ける)
+      expect(icons).to include(a_hash_including("src" => "/icon.png", "purpose" => "any"))
+    end
+
     it "ショートカットのリンク先がルーティングにある" do
       get pwa_manifest_path(format: :json)
 
@@ -79,6 +103,24 @@ RSpec.describe "PWA", type: :request do
       expect(response.body).not_to include 'addEventListener("fetch"'
       expect(response.body).not_to include "caches.open"
     end
+
+    # 通知のアイコンは 192px を使う (512px は通知の枠に対して大きすぎて縮小される)。
+    # badge は単色のシルエットが要るので、用意するまで付けない
+    it "通知には 192px のアイコンを使う" do
+      get_service_worker
+
+      expect(response.body).to include "/icon-192.png"
+      expect(response.body).not_to match(/\bbadge\s*:/)
+    end
+  end
+
+  describe "通知のアイコン" do
+    it "サーバが送るアイコンも 192px の PNG で、実在する" do
+      [ DailyDigestJob::ICON, NotificationTestsController::ICON ].each do |icon|
+        expect(icon).to eq "/icon-192.png"
+        expect(Rails.public_path.join(icon.delete_prefix("/"))).to exist
+      end
+    end
   end
 
   describe "レイアウト" do
@@ -94,6 +136,15 @@ RSpec.describe "PWA", type: :request do
       get root_path
 
       expect(response.parsed_body.css(%(meta[name="theme-color"]))).to be_any
+    end
+
+    # iOS は角を自分で丸めるので、角丸の icon.png ではなく全面塗りの 180px を渡す
+    it "apple-touch-icon に 180px の PNG を出す" do
+      get root_path
+
+      link = response.parsed_body.at(%(link[rel="apple-touch-icon"]))
+      expect(link["href"]).to eq "/apple-touch-icon.png"
+      expect(Rails.public_path.join("apple-touch-icon.png")).to exist
     end
 
     it "VAPID の公開鍵は全ページには置かない (使うのはアカウント設定だけ)" do

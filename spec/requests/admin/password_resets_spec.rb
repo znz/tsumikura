@@ -19,7 +19,7 @@ RSpec.describe "管理者によるパスワード再設定", type: :request do
     post admin_user_password_reset_path(member)
 
     expect(response).to have_http_status(:forbidden)
-    expect(member.reload.authenticate("password")).to be_truthy
+    expect(member.reload.authenticate("family-password")).to be_truthy
   end
 
   describe "管理者の操作" do
@@ -155,7 +155,7 @@ RSpec.describe "管理者によるパスワード再設定", type: :request do
         post admin_user_password_reset_path(admin)
       }.not_to change { admin.sessions.count }
 
-      expect(admin.reload.authenticate("password")).to be_truthy
+      expect(admin.reload.authenticate("family-password")).to be_truthy
       expect(response).to redirect_to account_path
     end
 

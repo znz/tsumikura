@@ -61,6 +61,41 @@ RSpec.describe User, type: :model do
 
       expect(user.update(name: "おかあさん")).to be true
     end
+
+    # 引き上げ (8 -> 12) を spec で固定する。下げると既存の運用の前提が変わる
+    it "最小長は 12 文字" do
+      expect(User::MINIMUM_PASSWORD_LENGTH).to eq 12
+    end
+
+    describe "引き上げ前に作られた短いパスワード" do
+      # 検証はパスワードを設定・変更するときだけ走る (allow_nil)。
+      # 引き上げても既存ユーザーの保存済みパスワードはそのまま使える
+      let(:legacy_password) { "a" * 8 }
+      let(:legacy_user) do
+        user = build(:user, password: legacy_password)
+        user.save!(validate: false)
+        # 保存直後のインスタンスはメモリに password を持ったままで、検証が走ってしまう。
+        # 実際の既存ユーザーと同じく、DB から読み直したもの (password は nil) を使う
+        User.find(user.id)
+      end
+
+      it "パスワード以外の属性は更新できる" do
+        expect(legacy_user.update(name: "おかあさん")).to be true
+      end
+
+      it "更新しても元のパスワードで認証できる" do
+        legacy_user.update!(name: "おかあさん")
+
+        expect(legacy_user.reload.authenticate(legacy_password)).to be_truthy
+      end
+
+      it "パスワードを変えるときは新しい最小長を求められる" do
+        legacy_user.password = "a" * (User::MINIMUM_PASSWORD_LENGTH - 1)
+
+        expect(legacy_user).not_to be_valid
+        expect(legacy_user.errors[:password]).to be_present
+      end
+    end
   end
 
   describe "#role" do

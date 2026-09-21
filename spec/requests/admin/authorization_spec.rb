@@ -60,7 +60,7 @@ RSpec.describe "管理画面の認可", type: :request do
       expect(target.reload).to be_member
       expect(target).not_to be_deactivated
       expect(target.name).to eq "おかあさん"
-      expect(target.authenticate("password")).to be_truthy
+      expect(target.authenticate("family-password")).to be_truthy
     end
 
     it "すべて叩いてもユーザーは増えない" do

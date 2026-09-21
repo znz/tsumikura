@@ -160,6 +160,10 @@
         iPhone・iPad では、共有メニューから<strong>「ホーム画面に追加」</strong>して、
         追加されたアイコンから開いたあとに通知をオンにしてください。
       </p>
+
+      <%# ログアウトでこの端末の購読を消す (docs/spec/04-notifications.md 5 節)。
+          気づかないと「オンにしたのに届かない」になるので先に断っておく %>
+      <p class="<%= hint_classes %>">ログアウトすると、この端末の通知はオフになります。</p>
     </div>
 
     <%= button_to "テスト送信", notification_test_path, class: secondary_button_classes("mt-3 w-full") %>

@@ -24,7 +24,9 @@
 
     <link rel="icon" href="/icon.png" type="image/png">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/icon.png">
+    <%# iOS は角を自分で丸めるので、角丸の icon.png ではなく全面塗りの 180px を渡す
+        (script/generate_icons.sh が icon.svg から作る) %>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
     <%# app/assets 以下の CSS をまとめて読み込む (Tailwind のビルド成果物 app/assets/builds/tailwind.css を含む) %>
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>

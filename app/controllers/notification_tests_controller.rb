@@ -11,7 +11,8 @@ class NotificationTestsController < ApplicationController
   BODY = "テスト送信です。通知はこのように届きます。".freeze
   # 日次ダイジェストの通知を置き換えないよう、別の tag にする
   TAG = "notification-test".freeze
-  ICON = "/icon.png".freeze
+  # 通知の枠に対して 512px は大きすぎるので 192px を使う (service-worker.js の既定と同じ)
+  ICON = "/icon-192.png".freeze
 
   def create
     return redirect_to account_path, alert: "サーバに通知の鍵が設定されていません。" unless Vapid.configured?

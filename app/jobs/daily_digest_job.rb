@@ -15,7 +15,8 @@ class DailyDigestJob < ApplicationJob
   PATH = "/".freeze
   # 同じ日に 2 通目が来たら前のものを置き換える (通知欄に積み上げない)
   TAG = "daily-digest".freeze
-  ICON = "/icon.png".freeze
+  # 通知の枠に対して 512px は大きすぎるので 192px を使う (service-worker.js の既定と同じ)
+  ICON = "/icon-192.png".freeze
 
   def perform
     # 日付をまたぐ瞬間に走っても 1 回のダイジェストの中で基準日がずれないように 1 度だけ取る

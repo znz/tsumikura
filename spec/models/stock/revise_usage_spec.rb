@@ -84,7 +84,7 @@ RSpec.describe Stock::ReviseUsage, type: :model do
     it "未来の日付には編集できず、在庫も movement も変わらない" do
       usage = record(quantity: 2)
 
-      travel_to Time.zone.parse("2026-09-20 00:10") do
+      travel_to Time.current.change(hour: 0, min: 10) do
         expect {
           described_class.call(usage, used_on: Date.current + 1)
         }.not_to change { StockMovement.count }

@@ -170,7 +170,7 @@ RSpec.describe Stock::RecordUsage, type: :model do
     it "未来の日付では保存できず、UsageRecord も movement も作られない" do
       usage = nil
 
-      travel_to Time.zone.parse("2026-09-20 00:10") do
+      travel_to Time.current.change(hour: 0, min: 10) do
         expect {
           usage = record(used_on: Date.current + 1)
         }.not_to change { [ UsageRecord.count, StockMovement.count, Lot.count ] }

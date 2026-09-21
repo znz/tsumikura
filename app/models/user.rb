@@ -1,6 +1,10 @@
 class User < ApplicationRecord
-  # 家族が手で入力するパスワードなので、最低限の長さだけを課す (docs/spec/05-auth.md)
-  MINIMUM_PASSWORD_LENGTH = 8
+  # 家族が手で入力するパスワードなので、長さだけを課す (docs/spec/05-auth.md)。
+  # 公開インターネットに出すので 2026-09-21 に 8 -> 12 に引き上げた。
+  # 検証は allow_nil なので**パスワードを設定・変更するときだけ**走る =
+  # 引き上げ前に作られた短いパスワードのユーザーはそのままログインでき、
+  # パスワード以外の属性も更新できる (spec/models/user_spec.rb で固定)
+  MINIMUM_PASSWORD_LENGTH = 12
 
   # 管理者が発行するパスワードは読み上げ・書き写しを前提にするため、
   # 紛らわしい文字 (0 1 i l o I O Q) を外した文字種から作る

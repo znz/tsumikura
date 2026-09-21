@@ -58,6 +58,13 @@ RSpec.describe "アカウント設定の通知セクション", type: :request d
 
       expect(response.parsed_body.css(%(form[action="#{notification_test_path}"]))).to be_any
     end
+
+    # ログアウトでこの端末の購読を消す (docs/spec/04-notifications.md 5 節) ので、その旨を断っておく
+    it "ログアウトで通知がオフになることを断っている" do
+      get account_path
+
+      expect(notification_section.text).to include "ログアウトすると、この端末の通知はオフになります"
+    end
   end
 
   describe "GET /account (鍵が未設定)" do

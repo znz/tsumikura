@@ -179,7 +179,7 @@ RSpec.describe "購入の記録", type: :request do
 
     describe "保存できない入力" do
       it "未来の日付は 422 で、Lot も movement も作られない" do
-        travel_to Time.zone.parse("2026-09-20 00:10") do
+        travel_to Time.current.change(hour: 0, min: 10) do
           expect {
             post item_lots_path(item), params: purchase_params(acquired_on: (Date.current + 1).to_s)
           }.not_to change { [ Lot.count, StockMovement.count ] }
@@ -190,7 +190,7 @@ RSpec.describe "購入の記録", type: :request do
       end
 
       it "今日の日付は記録できる (境界)" do
-        travel_to Time.zone.parse("2026-09-20 23:50") do
+        travel_to Time.current.change(hour: 23, min: 50) do
           post item_lots_path(item), params: purchase_params(acquired_on: Date.current.to_s)
         end
 
@@ -454,7 +454,7 @@ RSpec.describe "購入の記録", type: :request do
     end
 
     it "未来の日付には編集できない" do
-      travel_to Time.zone.parse("2026-09-20 00:10") do
+      travel_to Time.current.change(hour: 0, min: 10) do
         patch lot_path(lot), params: { lot: { acquired_on: (Date.current + 1).to_s,
                                               initial_quantity: "12" } }
       end

@@ -161,9 +161,9 @@ RSpec.describe "ユーザー管理", type: :request do
       member = create(:user)
 
       patch admin_user_path(member),
-        params: { user: { name: member.name, email_address: member.email_address, password: "newpassword" } }
+        params: { user: { name: member.name, email_address: member.email_address, password: "new-family-password" } }
 
-      expect(member.reload.authenticate("newpassword")).to be false
+      expect(member.reload.authenticate("new-family-password")).to be false
     end
 
     it "編集では無効化できない (無効化の操作からのみ)" do
