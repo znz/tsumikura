@@ -13,7 +13,7 @@ module Items
     DASHBOARD_ORIGIN = "dashboard".freeze
 
     def create
-      @item = Item.find(params[:item_id])
+      @item = Item.find_by_param!(params[:item_id])
       @usage_record = Stock::RecordUsage.call(item: @item, user: Current.user,
         attributes: { quantity: 1, used_on: Date.current })
       # 取り消しは「その記録を消す」だけなので、パスで渡す

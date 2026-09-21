@@ -14,8 +14,11 @@ class DisposalsController < ApplicationController
   before_action :find_movement, only: :destroy
 
   def new
-    @disposal = Disposal.new(quantity: 1, occurred_on: Date.current, lot_id: params[:lot_id],
-      disposal_reason: "expired")
+    # ロットの行からの「廃棄」リンクは GET なので lot_id は Base58 の 22 文字で来る。
+    # フォームのセレクトの値は POST の本文にしか出ないので UUID のまま
+    # (docs/spec/03-screens.md)。読めない値は「未指定」に倒す (FEFO の自動引き当て)
+    @disposal = Disposal.new(quantity: 1, occurred_on: Date.current,
+      lot_id: Base58Uuid.decode_or_nil(params[:lot_id]), disposal_reason: "expired")
     load_lots
   end
 
@@ -44,7 +47,7 @@ class DisposalsController < ApplicationController
 
   private
     def set_item
-      @item = Item.find(params[:item_id])
+      @item = Item.find_by_param!(params[:item_id])
     end
 
     # 廃棄できるのは在庫の残っているロットだけ。捨てるのは古いものからなので
@@ -54,7 +57,7 @@ class DisposalsController < ApplicationController
     end
 
     def find_movement
-      @movement = StockMovement.kind_disposal.find_by(id: params[:id])
+      @movement = StockMovement.kind_disposal.find_by_param(params[:id])
       @item = @movement&.item
     end
 

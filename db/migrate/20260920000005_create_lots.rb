@@ -1,9 +1,9 @@
 class CreateLots < ActiveRecord::Migration[8.1]
   def change
-    create_table :lots do |t|
+    create_table :lots, id: :uuid, default: -> { "uuidv7()" } do |t|
       # 1 行 = 1 回の入庫 (docs/spec/01-domain-model.md 判断 2)。
       # 期限のない品目でもロットを作るので expires_on は NULL 可
-      t.references :item, null: false, foreign_key: true, index: false
+      t.references :item, type: :uuid, null: false, foreign_key: true, index: false
       t.integer :kind, null: false, default: 0                  # 0:purchase 1:initial 2:adjustment
       t.date :acquired_on, null: false                          # 購入日 / 初期在庫日 / 棚卸日
       t.date :expires_on
@@ -13,9 +13,9 @@ class CreateLots < ActiveRecord::Migration[8.1]
       t.integer :pack_count                                     # パック数
       t.integer :price_yen                                      # 税込合計 (任意)
       # 店舗の削除は nullify。購入記録は消さず店舗だけを外す (docs/spec/01-domain-model.md 3 節)
-      t.references :store, foreign_key: { on_delete: :nullify }
+      t.references :store, type: :uuid, foreign_key: { on_delete: :nullify }
       # 記録者。ユーザーは物理削除せず deactivated_at で無効化するので restrict でよい
-      t.references :user, null: false, foreign_key: { on_delete: :restrict }
+      t.references :user, type: :uuid, null: false, foreign_key: { on_delete: :restrict }
       t.text :note
       t.datetime :depleted_at                                   # キャッシュ: 残 0 になった日時
 

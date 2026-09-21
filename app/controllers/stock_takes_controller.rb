@@ -78,12 +78,12 @@ class StockTakesController < ApplicationController
 
   private
     def set_stock_take
-      @stock_take = StockTake.find(params[:id])
+      @stock_take = StockTake.find_by_param!(params[:id])
     end
 
     # 確定済みは編集も削除もできない (docs/spec/01-domain-model.md 3 節)
     def set_draft
-      @stock_take = StockTake.drafts.find(params[:id])
+      @stock_take = StockTake.drafts.find_by_param!(params[:id])
     end
 
     def set_storage_locations
@@ -94,8 +94,9 @@ class StockTakesController < ApplicationController
       params.expect(stock_take: CREATE_ATTRIBUTES)
     end
 
-    # 品目 id / ロット id をキーにした実数のハッシュ。
-    # 数字にならないキーは無視する (壊れたパラメータで 500 にしない)
+    # 品目 id / ロット id をキーにした実数のハッシュ。キーは POST の本文にしか出ないので
+    # UUID のまま (docs/spec/03-screens.md 3 節)。知らない id のキーは
+    # Stock::WriteStockTakeEntries が黙って捨てる (壊れたパラメータで 500 にしない)
     def count_params
       counts = params[:counts]
       counts.is_a?(ActionController::Parameters) ? counts.to_unsafe_h : {}

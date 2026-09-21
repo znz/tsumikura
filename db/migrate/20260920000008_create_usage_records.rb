@@ -1,16 +1,16 @@
 class CreateUsageRecords < ActiveRecord::Migration[8.1]
   def change
-    create_table :usage_records do |t|
+    create_table :usage_records, id: :uuid, default: -> { "uuidv7()" } do |t|
       # ユーザーの「使った」操作 1 回 (docs/spec/01-domain-model.md 2 節)。
       # FEFO で複数ロットに分かれると stock_movements は複数行になるが、記録は 1 行のまま
-      t.references :item, null: false, foreign_key: true, index: false
+      t.references :item, type: :uuid, null: false, foreign_key: true, index: false
       # 用途を使わない品目では NULL。外部キーは (item_purpose_id, item_id) の複合で張る
       # (下の add_foreign_key)。単独の外部キーは複合側が兼ねるので作らない
-      t.references :item_purpose, foreign_key: false, index: false
+      t.references :item_purpose, type: :uuid, foreign_key: false, index: false
       t.integer :quantity, null: false                       # > 0 (符号は stock_movements 側で付ける)
       t.date :used_on, null: false
       # 記録者。ユーザーは物理削除せず deactivated_at で無効化する
-      t.references :user, null: false, foreign_key: { on_delete: :restrict }
+      t.references :user, type: :uuid, null: false, foreign_key: { on_delete: :restrict }
       t.text :note
 
       t.timestamps

@@ -113,8 +113,16 @@ RSpec.describe Lot, type: :model do
         expect(lot.errors[:store]).to be_present
       end
 
-      it "id が 0 でも保存できない" do
+      it "壊れた店舗 id (0) でも保存できない" do
         expect(build(:lot, store_id: 0)).not_to be_valid
+      end
+
+      # 壊れた値とは経路が違う (こちらは cast が通って関連が nil になる)
+      it "形は正しいが存在しない店舗の UUID でも保存できない" do
+        lot = build(:lot, store_id: nonexistent_uuid)
+
+        expect(lot).not_to be_valid
+        expect(lot.errors[:store]).to be_present
       end
 
       it "店舗が空なら検証しない" do

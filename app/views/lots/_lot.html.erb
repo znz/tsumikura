@@ -41,7 +41,7 @@
   <div class="flex shrink-0 items-center gap-2">
     <%# 期限切れロットからは廃棄に進めるようにする (docs/spec/02-forecast.md 12 節) %>
     <% if lot.expired?(today) && lot.remaining_quantity.positive? %>
-      <%= link_to "廃棄", new_item_disposal_path(item, lot_id: lot.id),
+      <%= link_to "廃棄", new_item_disposal_path(item, lot_id: lot.to_param),
             aria: { label: "このロットを廃棄" }, class: secondary_button_classes("text-red-700") %>
     <% end %>
     <%# 調整ロットは画面から編集できない (元になった使用記録・棚卸の側から直す) %>

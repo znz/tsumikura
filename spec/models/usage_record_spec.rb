@@ -84,12 +84,20 @@ RSpec.describe UsageRecord, type: :model do
       expect(record.errors[:item_purpose]).to be_present
     end
 
-    it "id が 0 の用途でも 500 にせず検証エラーになる" do
+    it "UUID の形でない用途 id (0) でも 500 にせず検証エラーになる" do
       expect(build(:usage_record, item: item, item_purpose_id: 0)).not_to be_valid
     end
 
-    # 8 バイト整数をはみ出す id のまま関連をたどると RangeError で 500 になる
-    it "8 バイト整数をはみ出す用途 id でも 500 にせず検証エラーになる" do
+    # 壊れた値とは経路が違う (こちらは cast が通って関連が nil になる)
+    it "形は正しいが存在しない用途の UUID でも検証エラーになる" do
+      record = build(:usage_record, item: item, item_purpose_id: nonexistent_uuid)
+
+      expect(record).not_to be_valid
+      expect(record.errors[:item_purpose]).to be_present
+    end
+
+    # 引けない id のまま関連をたどらないことを固定する (500 にしない)
+    it "UUID の形でない用途 id でも 500 にせず検証エラーになる" do
       record = build(:usage_record, item: item, item_purpose_id: "99999999999999999999")
 
       expect(record).not_to be_valid
@@ -127,8 +135,26 @@ RSpec.describe UsageRecord, type: :model do
       expect(build(:usage_record, item: item, lot_id: "きのうの")).not_to be_valid
     end
 
-    it "8 バイト整数をはみ出す lot_id でも 500 にせず検証エラーになる" do
+    it "UUID の形でない lot_id でも 500 にせず検証エラーになる" do
       expect(build(:usage_record, item: item, lot_id: "99999999999999999999")).not_to be_valid
+      expect(build(:usage_record, item: item, lot_id: Base58Uuid.encode(SecureRandom.uuid))).not_to be_valid
+    end
+
+    it "存在しない UUID の lot_id も検証エラーになる" do
+      expect(build(:usage_record, item: item, lot_id: nonexistent_uuid)).not_to be_valid
+    end
+
+    # PostgreSQL の uuid 型は大文字小文字を区別しないので、大文字を通すと
+    # exists? は true なのに Stock::Allocator の `lot.id == preferred_lot_id` が外れ、
+    # 「指定したロットは使い切り」扱いで**黙って別のロットから引かれて**しまう。
+    # POST の本文の UUID はアプリが描いた小文字だけなので、大文字は検証エラーでよい
+    it "大文字の UUID の lot_id は検証エラーになる (黙って別ロットに倒さない)" do
+      lot = create(:lot, item: item, initial_quantity: 3)
+      record = build(:usage_record, item: item, lot_id: lot.id.upcase)
+
+      expect(record.selected_lot_id).to be_nil
+      expect(record).not_to be_valid
+      expect(record.errors[:lot_id]).to be_present
     end
   end
 

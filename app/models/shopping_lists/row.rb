@@ -126,7 +126,7 @@ module ShoppingLists
     # 並び順のキー: グループ → days_left (nil は最後) → よみ → id
     def sort_key
       [ GROUP_ORDER.fetch(auto? ? status : kind), days_left.nil? ? 1 : 0, days_left || 0,
-        sort_name, record_id || item_id || 0 ]
+        sort_name, record_id || item_id || "" ]
     end
 
     private

@@ -1,6 +1,6 @@
 class CreateCategories < ActiveRecord::Migration[8.1]
   def change
-    create_table :categories do |t|
+    create_table :categories, id: :uuid, default: -> { "uuidv7()" } do |t|
       t.string :name, null: false
       t.integer :position, null: false, default: 0
 

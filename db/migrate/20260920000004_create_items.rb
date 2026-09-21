@@ -1,12 +1,12 @@
 class CreateItems < ActiveRecord::Migration[8.1]
   def change
-    create_table :items do |t|
+    create_table :items, id: :uuid, default: -> { "uuidv7()" } do |t|
       t.string :name, null: false
       t.string :name_reading                                    # ひらがな検索用 (任意)
       # マスタの削除は nullify (docs/spec/01-domain-model.md 3 節)。
       # モデル側の dependent: :nullify だけでなく DB 側でも保証する
-      t.references :category, foreign_key: { on_delete: :nullify }
-      t.references :storage_location, foreign_key: { on_delete: :nullify }
+      t.references :category, type: :uuid, foreign_key: { on_delete: :nullify }
+      t.references :storage_location, type: :uuid, foreign_key: { on_delete: :nullify }
       t.string :unit, null: false, default: "個"
       t.integer :default_pack_size                              # 入数の既定値
       t.integer :minimum_quantity                               # 最低在庫数 (任意)

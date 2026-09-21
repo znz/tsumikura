@@ -1,9 +1,9 @@
 class CreateItemPurposes < ActiveRecord::Migration[8.1]
   def change
-    create_table :item_purposes do |t|
+    create_table :item_purposes, id: :uuid, default: -> { "uuidv7()" } do |t|
       # 用途は品目に紐づく子レコード (docs/spec/01-domain-model.md 判断 4)。
       # グローバルな用途マスタにはしない (「リモコン」は単 3 電池の文脈でのみ意味を持つ)
-      t.references :item, null: false, foreign_key: true, index: false
+      t.references :item, type: :uuid, null: false, foreign_key: true, index: false
       t.string :name, null: false
       t.integer :default_quantity, null: false, default: 1   # 「リモコンは 2 本」
       t.integer :position, null: false, default: 0

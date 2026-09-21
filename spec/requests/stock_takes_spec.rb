@@ -64,6 +64,11 @@ RSpec.describe "棚卸", type: :request do
       post stock_takes_path,
         params: { stock_take: { counted_on: Date.current.to_s, storage_location_id: 0 } }
       expect(response).to have_http_status(:unprocessable_content)
+
+      # 壊れた値とは経路が違う (こちらは cast が通って関連が nil になる)
+      post stock_takes_path,
+        params: { stock_take: { counted_on: Date.current.to_s, storage_location_id: nonexistent_uuid } }
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "stock_take キーが無ければ 400 (500 にしない)" do

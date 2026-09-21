@@ -88,7 +88,7 @@
 
     <%# 自動で並ぶ行は消しても導出でまた出るので、手で足した行にだけ削除を出す %>
     <% if row.record_id && !row.auto? %>
-      <%= button_to shopping_list_item_path(row.record_id), method: :delete,
+      <%= button_to shopping_list_item_path(id_param(row.record_id)), method: :delete,
             class: secondary_button_classes("cursor-pointer text-red-700") do %>
         <span aria-hidden="true">リストから外す</span>
         <span class="sr-only">「<%= row.name %>」をリストから外す</span>

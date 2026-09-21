@@ -58,13 +58,13 @@ class LotsController < ApplicationController
 
   private
     def set_item
-      @item = Item.find(params[:item_id])
+      @item = Item.find_by_param!(params[:item_id])
     end
 
     # 画面から編集・削除できるのは購入と初期在庫のロットだけ。
     # 調整ロット (棚卸・自動補填が作る) は、元になった記録の側から直す
     def set_lot
-      @lot = Lot.recordable.find(params[:id])
+      @lot = Lot.recordable.find_by_param!(params[:id])
       @item = @lot.item
     end
 

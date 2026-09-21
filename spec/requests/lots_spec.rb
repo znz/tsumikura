@@ -66,10 +66,13 @@ RSpec.describe "購入の記録", type: :request do
       end
     end
 
-    it "存在しない品目は 404" do
-      get new_item_lot_path(item_id: 0)
+    # URL の id は Base58 の 22 文字。読めない値・存在しない値・生の UUID のどれも 404
+    it "引けない品目 id は 404" do
+      [ 0, malformed_param, nonexistent_param, create(:item).id ].each do |item_id|
+        get new_item_lot_path(item_id: item_id)
 
-      expect(response).to have_http_status(:not_found)
+        expect(response).to have_http_status(:not_found)
+      end
     end
   end
 

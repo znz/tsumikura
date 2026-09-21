@@ -21,11 +21,12 @@ RSpec.describe "通知の購読", type: :request do
       expect(WebPushSubscription.sole).to have_attributes(user: user, endpoint: endpoint)
     end
 
-    it "作った購読の id を返す (JS が「オフ」で使う)" do
+    # JS はこの値をそのまま URL に入れるので Base58 の 22 文字で返す
+    it "作った購読の id を Base58 で返す (JS が「オフ」の URL に使う)" do
       subscribe
 
       expect(response).to have_http_status(:created)
-      expect(response.parsed_body["id"]).to eq WebPushSubscription.sole.id
+      expect(response.parsed_body["id"]).to eq WebPushSubscription.sole.to_param
     end
 
     it "ブラウザを user_agent に残す" do

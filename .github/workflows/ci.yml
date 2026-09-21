@@ -70,7 +70,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres
+        # uuidv7() は PostgreSQL 18 から (docs/ops/development.md)
+        image: postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -111,7 +112,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres
+        # uuidv7() は PostgreSQL 18 から (docs/ops/development.md)
+        image: postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

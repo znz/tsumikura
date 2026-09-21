@@ -180,7 +180,7 @@ module Forecast
       # これで「品目ごとに 1 クエリ」を避けられる。値は必ず束縛する (渡すのは id と日付だけだが、
       # 文字列連結で SQL を組み立てない)
       def windows_join(table)
-        rows = Array.new(windows.size, "(?::bigint, ?::date)").join(", ")
+        rows = Array.new(windows.size, "(?::uuid, ?::date)").join(", ")
         binds = windows.flat_map { |item_id, window| [ item_id, window.start_on ] }
 
         ActiveRecord::Base.sanitize_sql_array([

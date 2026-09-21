@@ -78,6 +78,13 @@ Stimulus の `data-*` 属性とボタンが出ていることを request spec �
 
 | 項目 | 決定 | 理由 / 参照 |
 |---|---|---|
+| **主キーの型** | **アプリの全テーブルを UUIDv7 (`uuid` 列 + 既定値 `uuidv7()`)。Solid Queue / Solid Cache は bigint のまま** | Rails 既定の連番 id は URL に出ると予測可能で、`/items/1`〜`/items/50` をたどれば登録件数も他の品目も見えてしまう。生成を DB の既定値に置くと `insert_all` / `upsert_all` や生 SQL でも同じ規則になり、振り忘れの穴ができない。**PostgreSQL 18 以上が必須**になる。Solid Queue / Cache を除いたのは (1) id が外に出ない (2) Solid Queue は `job_id` の昇順で FIFO を決める (3) gem のスキーマ更新と食い違う、の 3 つ。[データモデル 2 節](../spec/01-domain-model.md) |
+| **UUID の生成を Ruby 側でしない** | **DB の既定値 `uuidv7()` に任せる** | Ruby 側 (`before_create` や `SecureRandom.uuid_v7`) だと、モデルを経由しない書き込み (`insert_all` / `upsert_all` / 生 SQL / migration) のたびに振り忘れの穴ができる。代償として PostgreSQL 18 が必須になるが、開発・CI・本番のすべてをそろえられる見込みが立っている |
+| **URL の id の表現** | **Base58 の 22 文字 (固定長)。生の UUID は URL では受け付けない** | 36 文字の UUID は URL が長く読みにくい。Base58 は `0` `O` `I` `l` を除くので写し間違えにくく、ASCII 昇順のアルファベットなので辞書順が UUID の大小と一致する。長さを 22 に固定するのは、可変長だと 1 つの UUID に複数の表現ができて URL が一意にならないため。生の UUID も受け付けると入口が 2 つになるので、22 文字の Base58 以外は 404 にする。[画面 3 節](../spec/03-screens.md) |
+| **POST の本文に入る id** | **UUID のまま** | URL に出ないので短くする理由がない。Base58 にすると `where` に渡す前に必ずデコードが要る。セレクトの値・hidden・`counts[<id>]` や `purchase[lines][<id>]` のようなキーが対象 |
+| **UUIDv7 から作成時刻が読めること** | **許容する** | 先頭 48 ビットがミリ秒のタイムスタンプなので、URL から作成時刻は分かる。隠したいのは「件数と他のレコード」で、作成時刻は画面にも出ている。完全ランダム (v4) にすると、index の局所性が落ちて挿入順の tie-break も使えなくなる |
+| **主キーの変換 migration** | **作らない。DB を作り直す** | 開発 DB も本番 DB も動作確認用で捨ててよい段階だったので、既存の `create_table` を直接書き換えた。本番の作り直し手順は [デプロイ 10 節](../ops/deployment.md#10-スキーマを作り直す-主キーの-uuidv7-化) |
+| **挿入順が要るところの並び** | **`order(:created_at, :id)`** | `uuidv7()` は同一バックエンド内では単調増加だが、**別の接続どうしの同一ミリ秒内では順序を保証しない**。ロックの順序 (デッドロック防止) は「一貫した全順序」であればよいので `order(:id)` のままでよい |
 | **Thruster を残すか外すか** (旧 #1) | **残す (案 B)。`Dockerfile` / `Gemfile` / `bin/thrust` は変更しない** (2026-09-21 に Dokku で確認) | 初回デプロイで現状の Dockerfile のまま動いた。`listen tcp :80: bind: permission denied` も 502 も出ず、`EXPOSE 80` からの自動検出だけで済んだ (`ports:set` の明示も不要)。案 A (外して Puma 直起動) の切り替え手順は「参考 (使わなかった)」として [デプロイ](../ops/deployment.md#31-thruster-をどうするか-決定済み-残す) 3.1 節と [初回デプロイ手順書](../ops/first-deploy.md#6-thruster-の判断-決定済み-案-b) 6 節に残してある |
 | **本番の PostgreSQL のメジャーバージョン** | **18。`compose.yaml` は変更しない** (2026-09-21 に確認) | dokku-postgres が作ったサービスが 18 で、開発用 `compose.yaml` の `postgres:18` と一致していた |
 | **パスワードの最小長** (旧 #10) | **12 文字** (`User::MINIMUM_PASSWORD_LENGTH`。2026-09-21 に 8 から引き上げ) | 公開インターネットに出したので、NIST SP 800-63B の**下限**である 8 文字のままにしない。常用手段がパスキーに移って手入力の機会が減ったので、長くしても実害が小さい。**検証は `allow_nil` でパスワードを設定・変更するときだけ走る**ので、引き上げ前の短いパスワードのユーザーはそのままログインでき、パスワード以外の属性も更新できる (再設定は強制しない)。管理者が発行する生成パスワード (19 文字) と `tsumikura:create_admin` の自動生成は影響なし。[認証](../spec/05-auth.md#パスワードの要件) |

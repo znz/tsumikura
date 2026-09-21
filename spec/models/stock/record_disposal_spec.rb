@@ -196,9 +196,27 @@ RSpec.describe Stock::RecordDisposal, type: :model do
       expect(other_lot.reload.remaining_quantity).to eq 5
     end
 
-    # 8 バイト整数をはみ出す id を where に渡すと PG が範囲エラーを返して 500 になる
-    it "8 バイト整数をはみ出すロット id でも例外にならず検証エラーになる" do
+    # 引けない id のまま関連をたどらないことを固定する (500 にしない)
+    it "UUID の形でないロット id は例外にならず検証エラーになる" do
       expect(dispose(lot_id: 2**63).errors[:lot_id]).to be_present
+      expect(dispose(lot_id: "9" * 40).errors[:lot_id]).to be_present
+      expect(dispose(lot_id: Base58Uuid.encode(SecureRandom.uuid)).errors[:lot_id]).to be_present
+    end
+
+    it "存在しない UUID のロット id も検証エラーになる" do
+      expect(dispose(lot_id: nonexistent_uuid).errors[:lot_id]).to be_present
+    end
+
+    # uuid 型は大文字小文字を区別しないので、大文字を通すと DB では引けるのに
+    # Ruby の文字列比較が外れる。その差を突かれないよう、検証の段階で弾く
+    it "大文字の UUID のロット id は検証エラーになり、そのロットも減らない" do
+      lot = create(:lot, item: item, initial_quantity: 5)
+
+      disposal = nil
+      expect { disposal = dispose(lot_id: lot.id.upcase) }.not_to change { StockMovement.count }
+
+      expect(disposal.errors[:lot_id]).to be_present
+      expect(lot.reload.remaining_quantity).to eq 5
     end
   end
 

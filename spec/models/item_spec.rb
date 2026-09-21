@@ -172,10 +172,22 @@ RSpec.describe Item, type: :model do
         expect(item.errors[:storage_location]).to be_present
       end
 
-      # id 0 は query_attribute (category_id?) が false を返すので、present? で判定する
-      it "id が 0 でも保存できない" do
+      # uuid 列は UUID の形でない値を nil にキャストするので、
+      # 「送られてきたか」は *_before_type_cast で判定する (黙って「未指定」にしない)
+      it "UUID の形でない id (0) でも保存できない" do
         expect(build(:item, category_id: 0)).not_to be_valid
         expect(build(:item, storage_location_id: 0)).not_to be_valid
+      end
+
+      # 壊れた値とは経路が違う (こちらは cast が通って関連が nil になる)
+      it "形は正しいが存在しない UUID でも保存できない" do
+        item = build(:item, category_id: nonexistent_uuid)
+        expect(item).not_to be_valid
+        expect(item.errors[:category]).to be_present
+
+        item = build(:item, storage_location_id: nonexistent_uuid)
+        expect(item).not_to be_valid
+        expect(item.errors[:storage_location]).to be_present
       end
 
       it "id が空なら検証しない" do

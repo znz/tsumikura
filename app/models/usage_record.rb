@@ -7,8 +7,6 @@ class UsageRecord < ApplicationRecord
   # 整数カラムの上限。numericality は 4 バイト整数の範囲を見ないので、上限が無いと
   # 書き込み時に ActiveModel::RangeError になり 422 ではなく 500 になる
   MAX_QUANTITY = Item::MAX_QUANTITY
-  # 8 バイト整数の上限。これを超える id を where に渡すと PG が範囲エラーを返して 500 になる
-  MAX_ID = 2**63 - 1
   # 数量を空で送られたときの既定 (用途を選んでいればその用途の既定数量を使う)
   DEFAULT_QUANTITY = 1
 
@@ -42,7 +40,7 @@ class UsageRecord < ApplicationRecord
   validate :lot_must_belong_to_item
 
   # 新しい記録から順に。同じ日なら後から記録したものを新しいとみなす
-  scope :recent_first, -> { order(used_on: :desc, id: :desc) }
+  scope :recent_first, -> { order(used_on: :desc, created_at: :desc, id: :desc) }
 
   # 「最近の記録」で購入 (Lot) と時系列に混ぜるための共通の日付
   def recorded_on
@@ -52,8 +50,7 @@ class UsageRecord < ApplicationRecord
   # 手動で指定された引き当て先ロットの id。指定が無ければ nil (FEFO の自動引き当て)。
   # この品目のロットでなければ nil を返し、検証エラーにする
   def selected_lot_id
-    id = Integer(lot_id.to_s, 10, exception: false)
-    id if id&.between?(1, MAX_ID) && item&.lots&.exists?(id: id)
+    lot_id if Base58Uuid.uuid?(lot_id) && item&.lots&.exists?(id: lot_id)
   end
 
   private
@@ -70,14 +67,14 @@ class UsageRecord < ApplicationRecord
       item_purpose&.default_quantity
     end
 
-    # 参照先を引ける id か。8 バイト整数をはみ出す値のまま関連をたどると、
-    # クエリが ActiveModel::RangeError になり 422 ではなく 500 になる
+    # 参照先を引ける id か。uuid 列は UUID の形でない値を nil にキャストするので、
+    # 「送られてきたのに nil」= 引けない id として扱う (422。500 にはならない)
     def item_purpose_id_resolvable?
-      item_purpose_id.is_a?(Integer) && item_purpose_id.between?(1, MAX_ID)
+      item_purpose_id.present?
     end
 
     def item_purpose_id_must_be_resolvable
-      return if item_purpose_id.blank? || item_purpose_id_resolvable?
+      return if item_purpose_id_before_type_cast.blank? || item_purpose_id.present?
 
       errors.add(:item_purpose, :invalid)
     end

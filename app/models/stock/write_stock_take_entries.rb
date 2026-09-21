@@ -139,15 +139,17 @@ module Stock
         value.is_a?(String) ? value.strip : nil
       end
 
-      # 知らないロット id は黙って捨てる (他の品目のロットは数えられない)
+      # 知らないロット id は黙って捨てる (他の品目のロットは数えられない)。
+      # 入力欄の名前は counts[<品目の UUID>][lots][<ロットの UUID>] (POST の本文なので
+      # Base58 ではなく UUID。docs/spec/03-screens.md)
       def lot_values(item)
         raw = item_counts(item)["lots"]
         return {} unless raw.is_a?(Hash)
 
         ids = (lots_by_item_id[item.id] || []).map(&:id)
         raw.filter_map { |lot_id, value|
-          id = Integer(lot_id.to_s, 10, exception: false)
-          next unless id && ids.include?(id)
+          id = lot_id.to_s
+          next unless ids.include?(id)
 
           [ id, string_value(value) ]
         }.to_h

@@ -55,6 +55,8 @@ module Stock
 
       # ロックしてから読み直す。フォームを開いている間に他の人がまとめ購入を済ませていると、
       # ここで行が消えている
+      # ロックの順序は「一貫した全順序」であればよいので、主キー (UUID) の昇順のままでよい
+      # (デッドロック防止。挿入順である必要はない)
       def lock_rows
         ShoppingListItem.where(id: purchase.record_ids).order(:id).lock.to_a
       end

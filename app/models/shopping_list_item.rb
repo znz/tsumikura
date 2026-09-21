@@ -42,7 +42,7 @@ class ShoppingListItem < ApplicationRecord
   # 品目 1 件につき行は 1 つ (DB 側は item_id IS NOT NULL の部分一意 index)
   validates :item_id, uniqueness: true, allow_nil: true
   # 画面を開いている間に品目が消えた場合に外部キー違反 (500) にしない
-  validates :item, presence: { message: :invalid }, if: -> { item_id.present? }
+  validates :item, presence: { message: :invalid }, if: -> { item_id_before_type_cast.present? }
 
   # 期限切れのスヌーズや、アーカイブ済み品目の行の掃除 (docs/spec/01-domain-model.md 判断 5)。
   # GET では行を触らないので、まとめ購入の成功時に呼ぶ (日次ジョブは Phase 12 に申し送り)

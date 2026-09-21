@@ -67,10 +67,13 @@ RSpec.describe "使用の記録", type: :request do
       expect(response.parsed_body.at("select[name='usage_record[lot_id]']")).to be_nil
     end
 
-    it "存在しない品目は 404" do
-      get new_item_usage_record_path(item_id: 0)
+    # URL の id は Base58 の 22 文字。読めない値・存在しない値・生の UUID のどれも 404
+    it "引けない品目 id は 404" do
+      [ 0, malformed_param, nonexistent_param, create(:item).id ].each do |item_id|
+        get new_item_usage_record_path(item_id: item_id)
 
-      expect(response).to have_http_status(:not_found)
+        expect(response).to have_http_status(:not_found)
+      end
     end
   end
 
@@ -235,13 +238,13 @@ RSpec.describe "使用の記録", type: :request do
         expect(response).to have_http_status(:unprocessable_content)
       end
 
-      it "8 バイト整数をはみ出す用途 id でも 500 にならず 422" do
+      it "UUID の形でない用途 id でも 500 にならず 422" do
         post item_usage_records_path(item), params: usage_params(item_purpose_id: "99999999999999999999")
 
         expect(response).to have_http_status(:unprocessable_content)
       end
 
-      it "8 バイト整数をはみ出すロット id でも 500 にならず 422" do
+      it "UUID の形でないロット id でも 500 にならず 422" do
         post item_usage_records_path(item), params: usage_params(lot_id: "99999999999999999999")
 
         expect(response).to have_http_status(:unprocessable_content)

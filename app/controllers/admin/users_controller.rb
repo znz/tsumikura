@@ -3,7 +3,9 @@ module Admin
     before_action :set_user, only: %i[ edit update ]
 
     def index
-      @users = User.order(:id)
+      # 登録順。主キーは UUIDv7 で「別の接続の同一ミリ秒」までは順序を保証しないので、
+      # 挿入順が要るところは created_at を先に見る (docs/spec/01-domain-model.md 2 節)
+      @users = User.order(:created_at, :id)
     end
 
     def new
@@ -38,7 +40,7 @@ module Admin
 
     private
       def set_user
-        @user = User.find(params[:id])
+        @user = User.find_by_param!(params[:id])
       end
 
       # 無効化 (deactivated_at) は Admin::DeactivationsController、

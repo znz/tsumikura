@@ -1,4 +1,12 @@
 module ApplicationHelper
+  # URL に出す id (Base58 の 22 文字)。レコードそのものがあれば to_param を使えばよいが、
+  # id しか手元にないとき (関連を読み込まずに済ませたいとき) に使う。
+  # **URL に出るのはここを通した値だけ**で、POST の本文に入る id は UUID のまま
+  # (docs/spec/03-screens.md)
+  def id_param(id)
+    id && Base58Uuid.encode(id)
+  end
+
   # フォームとボタンの見た目。タップ領域は 44px 以上 (min-h-11) を守る (docs/spec/03-screens.md)
   def field_classes(extra = nil)
     class_names("mt-2 block min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 shadow-sm focus:outline-blue-600", extra)

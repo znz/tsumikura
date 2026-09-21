@@ -43,7 +43,7 @@ class StorageLocationsController < ApplicationController
 
   private
     def set_storage_location
-      @storage_location = StorageLocation.find(params[:id])
+      @storage_location = StorageLocation.find_by_param!(params[:id])
     end
 
     # position は StorageLocations::PositionsController の担当なので受け取らない

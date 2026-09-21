@@ -20,7 +20,7 @@ class Item < ApplicationRecord
   has_many :stock_take_entries, dependent: :destroy
   has_many :lots, dependent: :destroy
   has_many :usage_records, dependent: :destroy
-  has_many :item_purposes, -> { order(:position, :id) }, dependent: :destroy
+  has_many :item_purposes, -> { order(:position, :created_at, :id) }, dependent: :destroy
   # 買い物リストの永続行 (品目 1 件につき 1 行)。外部キーは restrict なので、
   # 品目を物理削除するときはこちらを先に消す
   has_one :shopping_list_item, dependent: :destroy
@@ -62,15 +62,16 @@ class Item < ApplicationRecord
 
   # フォームを開いている間にマスタが削除されると、保存時に外部キー違反 (500) になる。
   # id が 0 のときも弾きたいので category_id? (query_attribute) ではなく present? で判定する
-  validates :category, presence: { message: :invalid }, if: -> { category_id.present? }
-  validates :storage_location, presence: { message: :invalid }, if: -> { storage_location_id.present? }
+  validates :category, presence: { message: :invalid }, if: -> { category_id_before_type_cast.present? }
+  validates :storage_location, presence: { message: :invalid },
+    if: -> { storage_location_id_before_type_cast.present? }
 
   validate :urgent_threshold_must_not_exceed_soon_threshold
 
   scope :active, -> { where(archived_at: nil) }
   scope :archived, -> { where.not(archived_at: nil) }
   # 漢字の名前をコードポイント順に並べても五十音順にならないので、よみがあれば優先する
-  scope :ordered, -> { order(Arel.sql("COALESCE(items.name_reading, items.name)"), :id) }
+  scope :ordered, -> { order(Arel.sql("COALESCE(items.name_reading, items.name)"), :created_at, :id) }
 
   # 名前とよみの部分一致。LIKE のワイルドカード (% _ \) は検索語の一部として扱う。
   # よみはひらがなで保存しているので、検索語もひらがなにそろえて比べる

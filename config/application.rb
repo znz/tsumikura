@@ -41,6 +41,11 @@ module Tsumikura
       g.test_framework :rspec,
         fixture: true, view_specs: false, helper_specs: false, routing_specs: false
       g.fixture_replacement :factory_bot, dir: "spec/factories"
+      # 主キーと参照は UUID (docs/spec/01-domain-model.md 1 節)。
+      # 既定値の uuidv7() はジェネレータでは付かないので、生成された migration に
+      # `id: :uuid, default: -> { "uuidv7()" }` を手で足すこと
+      # (docs/ops/development.md「新しいテーブルを作る」)
+      g.orm :active_record, primary_key_type: :uuid
     end
   end
 end

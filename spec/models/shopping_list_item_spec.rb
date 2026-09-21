@@ -76,7 +76,9 @@ RSpec.describe ShoppingListItem do
     end
 
     it "存在しない品目を指していたら検証エラーにする (外部キー違反で 500 にしない)" do
+      # 壊れた値 (uuid に cast できず nil になる) と、形は正しいが存在しない UUID の両方
       expect(build(:shopping_list_item, item_id: 0)).not_to be_valid
+      expect(build(:shopping_list_item, item_id: nonexistent_uuid)).not_to be_valid
     end
   end
 

@@ -35,13 +35,13 @@ class Lot < ApplicationRecord
   # (期限切れから先に引くと、期限切れを除いて数える在庫 q が減らないため)
   scope :fefo, ->(today = Date.current) {
     order(Arel.sql(sanitize_sql_array([ "(expires_on < ?) IS TRUE", today ])),
-      Arel.sql("expires_on ASC NULLS LAST"), :acquired_on, :id)
+      Arel.sql("expires_on ASC NULLS LAST"), :acquired_on, :created_at, :id)
   }
   # 廃棄の引き当て順: 期限切れを先に、その中では FEFO。捨てるのは古いものからなので
   # 使用 (fefo) とは逆に期限切れを先頭に回す (docs/spec/01-domain-model.md 5 節)
   scope :expired_first, ->(today = Date.current) {
     order(Arel.sql(sanitize_sql_array([ "(expires_on < ?) IS NOT TRUE", today ])),
-      Arel.sql("expires_on ASC NULLS LAST"), :acquired_on, :id)
+      Arel.sql("expires_on ASC NULLS LAST"), :acquired_on, :created_at, :id)
   }
   scope :available, -> { where("remaining_quantity > 0") }
   scope :depleted, -> { where(remaining_quantity: 0) }
@@ -51,7 +51,7 @@ class Lot < ApplicationRecord
   scope :unexpired, ->(today = Date.current) { where(expires_on: nil).or(where(expires_on: today..)) }
   scope :priced, -> { where.not(price_yen: nil) }
   # 「最近」は購入日の新しい順。同じ日なら後から記録したものを新しいとみなす
-  scope :recent_first, -> { order(acquired_on: :desc, id: :desc) }
+  scope :recent_first, -> { order(acquired_on: :desc, created_at: :desc, id: :desc) }
   scope :recordable, -> { where(kind: RECORDABLE_KINDS) }
 
   before_validation :apply_pack_quantity
@@ -79,7 +79,7 @@ class Lot < ApplicationRecord
     allow_nil: true
   # フォームを開いている間に店舗が削除されると、そのままでは外部キー違反 (500) になる。
   # id が 0 のときも弾きたいので store_id? (query_attribute) ではなく present? で判定する
-  validates :store, presence: { message: :invalid }, if: -> { store_id.present? }
+  validates :store, presence: { message: :invalid }, if: -> { store_id_before_type_cast.present? }
 
   validate :acquired_on_cannot_be_in_the_future
   validate :initial_quantity_must_cover_consumption, on: :update
@@ -141,7 +141,7 @@ class Lot < ApplicationRecord
   # あとから足される正の adjustment なので、入庫とは区別する
   def inbound_movement
     stock_movements.where(quantity: 1.., stock_take_entry_id: nil, usage_record_id: nil)
-      .order(:id).first
+      .order(:created_at, :id).first
   end
 
   # 出庫の記録が紐づくロットは削除できない (docs/spec/01-domain-model.md 3 節)。

@@ -4,8 +4,10 @@
 # 永続行があればその行を更新 (PATCH)、無ければ作成 (POST) に送り、
 # コントローラ側が find_or_initialize_by(item_id:) で行を用意する。
 module ShoppingListsHelper
+  # パスの id は Base58 の 22 文字 (docs/spec/03-screens.md)。
+  # 行の item_id は POST の本文に入るだけなので UUID のまま (shopping_list_row_state)
   def shopping_list_row_url(row)
-    row.record_id ? shopping_list_item_path(row.record_id) : shopping_list_items_path
+    row.record_id ? shopping_list_item_path(id_param(row.record_id)) : shopping_list_items_path
   end
 
   def shopping_list_row_method(row)

@@ -4,7 +4,7 @@
 
 家庭の消耗品 (トイレットペーパー、洗剤、電池、常備薬…) の在庫を家族で共有し、「そろそろ買う」を教えてくれる Web アプリ。名前は「積み倉」(家にあるストック) と「積み暮ら(し)」(日々の積み重ね) を重ねたもので、表示は常にひらがなで「つみくら」と書く。
 
-> **現在の状態: [実装計画](docs/plan/implementation-plan.md) の全 13 フェーズを実装し、Dokku の本番環境で動かしている (2026-09-21 に初回デプロイ)。** 本番で確認できたのは、デプロイ一式 (Thruster、predeploy、HTTPS)、基本機能とブラウザ側の JavaScript、Android での通知、PC でのパスキー。まだ確認できていないのは、GitHub Actions (未 push。Chrome が要る system spec はそこで初めて走る)、毎朝の日次ダイジェスト、iPhone / iPad での通知とパスキー、使用履歴がたまってからの予測の表示。一覧は [未決事項と残作業](docs/plan/open-questions.md) を参照。
+> **現在の状態: [実装計画](docs/plan/implementation-plan.md) の全 13 フェーズを実装し、Dokku の本番環境で動かしている (2026-09-21 に初回デプロイ)。** 本番で確認できたのは、デプロイ一式 (Thruster、predeploy、HTTPS)、基本機能とブラウザ側の JavaScript、Android での通知、PC でのパスキー。まだ確認できていないのは、GitHub Actions (未 push。Chrome が要る system spec はそこで初めて走る)、毎朝の日次ダイジェスト、iPhone / iPad での通知とパスキー、使用履歴がたまってからの予測の表示。一覧は [未決事項と残作業](docs/plan/open-questions.md) を参照。 初回デプロイの後に、主キーを連番から UUIDv7 に変えた (URL では Base58 の 22 文字)。**この変更を本番に反映するには DB の作り直しが要る**。DB を作り直す前に push すると全画面が 500 になるので、必ず [デプロイの手順 10 節](docs/ops/deployment.md) の順に行うこと。
 
 ## 主な機能
 

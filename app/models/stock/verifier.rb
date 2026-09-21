@@ -51,7 +51,7 @@ module Stock
         # 入庫はロットの数量・日付と一致する 1 行。あとから足される正の adjustment
         # (棚卸のプラス差分・在庫不足の補填) は入庫ではないので除く (Lot#inbound_movement)
         inbound = movements.where(quantity: 1.., stock_take_entry_id: nil, usage_record_id: nil)
-          .order(:id).group_by(&:lot_id)
+          .order(:created_at, :id).group_by(&:lot_id)
         current_quantity = 0
 
         differences = item.lots.flat_map { |lot|

@@ -119,15 +119,18 @@ RSpec.describe "買い物リストの行", type: :request do
       expect(response).to have_http_status(:bad_request)
     end
 
+    # 壊れた値 (uuid に cast できない) と、形は正しいが存在しない UUID の両方
     it "存在しない品目には行を作らない (404 でも 500 でもなく案内して戻す)" do
-      expect {
-        post shopping_list_items_path, params: { shopping_list_item: { item_id: "0", checked: "true" } }
-      }.not_to change(ShoppingListItem, :count)
+      [ "0", nonexistent_uuid ].each do |item_id|
+        expect {
+          post shopping_list_items_path, params: { shopping_list_item: { item_id: item_id, checked: "true" } }
+        }.not_to change(ShoppingListItem, :count)
 
-      expect(response).to redirect_to shopping_list_path
+        expect(response).to redirect_to shopping_list_path
+      end
     end
 
-    it "8 バイト整数を超える品目 id でも 500 にしない" do
+    it "UUID の形でない品目 id でも 500 にしない" do
       post shopping_list_items_path,
         params: { shopping_list_item: { item_id: "9" * 30, checked: "true" } }
 

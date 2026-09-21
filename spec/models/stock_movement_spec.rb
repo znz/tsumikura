@@ -122,7 +122,7 @@ RSpec.describe StockMovement, type: :model do
       movement = create(:stock_movement)
 
       expect {
-        described_class.transaction(requires_new: true) { movement.update_column(:lot_id, 0) }
+        described_class.transaction(requires_new: true) { movement.update_column(:lot_id, nonexistent_uuid) }
       }.to raise_error(ActiveRecord::InvalidForeignKey)
     end
 

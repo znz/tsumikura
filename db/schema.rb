@@ -14,7 +14,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
-  create_table "categories", force: :cascade do |t|
+  create_table "categories", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "name", null: false
     t.integer "position", default: 0, null: false
@@ -23,9 +23,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.index ["position"], name: "index_categories_on_position"
   end
 
-  create_table "item_alert_states", force: :cascade do |t|
+  create_table "item_alert_states", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "item_id", null: false
+    t.uuid "item_id", null: false
     t.datetime "notified_at"
     t.string "notified_expiry_status"
     t.string "notified_purchase_status"
@@ -33,11 +33,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.index ["item_id"], name: "index_item_alert_states_on_item_id", unique: true
   end
 
-  create_table "item_purposes", force: :cascade do |t|
+  create_table "item_purposes", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "archived_at"
     t.datetime "created_at", null: false
     t.integer "default_quantity", default: 1, null: false
-    t.bigint "item_id", null: false
+    t.uuid "item_id", null: false
     t.string "name", null: false
     t.integer "position", default: 0, null: false
     t.datetime "updated_at", null: false
@@ -47,9 +47,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.check_constraint "default_quantity > 0", name: "item_purposes_default_quantity_positive"
   end
 
-  create_table "items", force: :cascade do |t|
+  create_table "items", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "archived_at"
-    t.bigint "category_id"
+    t.uuid "category_id"
     t.datetime "created_at", null: false
     t.integer "current_quantity", default: 0, null: false
     t.integer "default_pack_size"
@@ -63,7 +63,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.string "name_reading"
     t.text "note"
     t.integer "soon_threshold_days"
-    t.bigint "storage_location_id"
+    t.uuid "storage_location_id"
     t.date "tracking_started_on"
     t.boolean "tracks_expiry", default: false, null: false
     t.boolean "tracks_purposes", default: false, null: false
@@ -78,22 +78,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.check_constraint "current_quantity >= 0", name: "items_current_quantity_non_negative"
   end
 
-  create_table "lots", force: :cascade do |t|
+  create_table "lots", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.date "acquired_on", null: false
     t.datetime "created_at", null: false
     t.datetime "depleted_at"
     t.date "expires_on"
     t.integer "initial_quantity", null: false
-    t.bigint "item_id", null: false
+    t.uuid "item_id", null: false
     t.integer "kind", default: 0, null: false
     t.text "note"
     t.integer "pack_count"
     t.integer "pack_size"
     t.integer "price_yen"
     t.integer "remaining_quantity", default: 0, null: false
-    t.bigint "store_id"
+    t.uuid "store_id"
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.uuid "user_id", null: false
     t.index ["expires_on"], name: "index_lots_on_expires_on"
     t.index ["id", "item_id"], name: "index_lots_on_id_and_item_id", unique: true
     t.index ["item_id", "depleted_at"], name: "index_lots_on_item_id_and_depleted_at"
@@ -106,7 +106,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.check_constraint "remaining_quantity >= 0", name: "lots_remaining_quantity_non_negative"
   end
 
-  create_table "passkeys", force: :cascade do |t|
+  create_table "passkeys", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "external_id", limit: 1400, null: false
     t.datetime "last_used_at"
@@ -114,27 +114,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.text "public_key", null: false
     t.bigint "sign_count", default: 0, null: false
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.uuid "user_id", null: false
     t.index ["external_id"], name: "index_passkeys_on_external_id", unique: true
     t.index ["user_id"], name: "index_passkeys_on_user_id"
   end
 
-  create_table "sessions", force: :cascade do |t|
+  create_table "sessions", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "ip_address"
     t.datetime "updated_at", null: false
     t.string "user_agent"
-    t.bigint "user_id", null: false
+    t.uuid "user_id", null: false
     t.index ["user_id"], name: "index_sessions_on_user_id"
   end
 
-  create_table "shopping_list_items", force: :cascade do |t|
-    t.bigint "added_by_id", null: false
+  create_table "shopping_list_items", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
+    t.uuid "added_by_id", null: false
     t.boolean "added_manually", default: false, null: false
     t.datetime "checked_at"
     t.datetime "created_at", null: false
     t.string "free_text"
-    t.bigint "item_id"
+    t.uuid "item_id"
     t.integer "quantity"
     t.date "snoozed_until"
     t.datetime "updated_at", null: false
@@ -305,19 +305,19 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.index ["key"], name: "index_solid_queue_semaphores_on_key", unique: true
   end
 
-  create_table "stock_movements", force: :cascade do |t|
+  create_table "stock_movements", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "disposal_reason"
-    t.bigint "item_id", null: false
+    t.uuid "item_id", null: false
     t.integer "kind", null: false
-    t.bigint "lot_id", null: false
+    t.uuid "lot_id", null: false
     t.text "note"
     t.date "occurred_on", null: false
     t.integer "quantity", null: false
-    t.bigint "stock_take_entry_id"
+    t.uuid "stock_take_entry_id"
     t.datetime "updated_at", null: false
-    t.bigint "usage_record_id"
-    t.bigint "user_id", null: false
+    t.uuid "usage_record_id"
+    t.uuid "user_id", null: false
     t.index ["item_id", "occurred_on"], name: "index_stock_movements_on_item_id_and_occurred_on"
     t.index ["kind", "occurred_on"], name: "index_stock_movements_on_kind_and_occurred_on"
     t.index ["lot_id"], name: "index_stock_movements_on_lot_id"
@@ -329,14 +329,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.check_constraint "quantity <> 0", name: "stock_movements_quantity_not_zero"
   end
 
-  create_table "stock_take_entries", force: :cascade do |t|
+  create_table "stock_take_entries", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.integer "counted_quantity"
     t.datetime "created_at", null: false
     t.integer "difference"
     t.integer "expected_quantity", default: 0, null: false
-    t.bigint "item_id", null: false
-    t.bigint "lot_id"
-    t.bigint "stock_take_id", null: false
+    t.uuid "item_id", null: false
+    t.uuid "lot_id"
+    t.uuid "stock_take_id", null: false
     t.datetime "updated_at", null: false
     t.index ["id", "item_id"], name: "index_stock_take_entries_on_id_and_item_id", unique: true
     t.index ["item_id"], name: "index_stock_take_entries_on_item_id"
@@ -349,21 +349,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.check_constraint "expected_quantity >= 0", name: "stock_take_entries_expected_not_negative"
   end
 
-  create_table "stock_takes", force: :cascade do |t|
+  create_table "stock_takes", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.date "counted_on", null: false
     t.datetime "created_at", null: false
     t.datetime "finalized_at"
     t.text "note"
-    t.bigint "storage_location_id"
+    t.uuid "storage_location_id"
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.uuid "user_id", null: false
     t.index ["counted_on"], name: "index_stock_takes_on_counted_on"
     t.index ["finalized_at"], name: "index_stock_takes_on_finalized_at"
     t.index ["storage_location_id", "counted_on"], name: "index_stock_takes_on_storage_location_id_and_counted_on"
     t.index ["user_id"], name: "index_stock_takes_on_user_id"
   end
 
-  create_table "storage_locations", force: :cascade do |t|
+  create_table "storage_locations", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "name", null: false
     t.integer "position", default: 0, null: false
@@ -372,7 +372,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.index ["position"], name: "index_storage_locations_on_position"
   end
 
-  create_table "stores", force: :cascade do |t|
+  create_table "stores", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "name", null: false
     t.text "note"
@@ -380,15 +380,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.index ["name"], name: "index_stores_on_name", unique: true
   end
 
-  create_table "usage_records", force: :cascade do |t|
+  create_table "usage_records", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.bigint "item_id", null: false
-    t.bigint "item_purpose_id"
+    t.uuid "item_id", null: false
+    t.uuid "item_purpose_id"
     t.text "note"
     t.integer "quantity", null: false
     t.datetime "updated_at", null: false
     t.date "used_on", null: false
-    t.bigint "user_id", null: false
+    t.uuid "user_id", null: false
     t.index ["id", "item_id"], name: "index_usage_records_on_id_and_item_id", unique: true
     t.index ["item_id", "used_on"], name: "index_usage_records_on_item_id_and_used_on"
     t.index ["item_purpose_id", "used_on"], name: "index_usage_records_on_item_purpose_id_and_used_on"
@@ -397,7 +397,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.check_constraint "quantity > 0", name: "usage_records_quantity_positive"
   end
 
-  create_table "users", force: :cascade do |t|
+  create_table "users", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
     t.datetime "deactivated_at"
     t.string "email_address", null: false
@@ -412,7 +412,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.index ["webauthn_id"], name: "index_users_on_webauthn_id", unique: true
   end
 
-  create_table "web_push_subscriptions", force: :cascade do |t|
+  create_table "web_push_subscriptions", id: :uuid, default: -> { "uuidv7()" }, force: :cascade do |t|
     t.string "auth_key", limit: 255, null: false
     t.datetime "created_at", null: false
     t.string "endpoint", limit: 2048, null: false
@@ -421,7 +421,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_20_000016) do
     t.string "p256dh_key", limit: 255, null: false
     t.datetime "updated_at", null: false
     t.string "user_agent", limit: 255
-    t.bigint "user_id", null: false
+    t.uuid "user_id", null: false
     t.index ["endpoint"], name: "index_web_push_subscriptions_on_endpoint", unique: true
     t.index ["user_id"], name: "index_web_push_subscriptions_on_user_id"
     t.check_constraint "endpoint::text ~~ 'https://%'::text", name: "web_push_subscriptions_https_endpoint"

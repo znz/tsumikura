@@ -18,8 +18,9 @@ class WebPushSubscriptionsController < ApplicationController
     )
 
     if subscription.persisted? && subscription.errors.empty?
-      # JS は id を覚えて「通知をオフ」で使う (画面には endpoint を出さない)
-      render json: { id: subscription.id }, status: :created
+      # JS は id を覚えて「通知をオフ」の URL に使う (画面には endpoint を出さない)。
+      # URL に入れる値なので Base58 の 22 文字で返す (docs/spec/03-screens.md)
+      render json: { id: subscription.to_param }, status: :created
     else
       render json: { errors: subscription.errors.full_messages }, status: :unprocessable_content
     end
@@ -28,7 +29,7 @@ class WebPushSubscriptionsController < ApplicationController
   def destroy
     # 他人の購読は消せない (id は Current.user のぶんだけを引く)。
     # 既に消えている購読への操作 (古い画面・端末側で解除済み) は 404 にせず成功として扱う
-    Current.user.web_push_subscriptions.find_by(id: params[:id])&.destroy
+    Current.user.web_push_subscriptions.find_by_param(params[:id])&.destroy
 
     respond_to do |format|
       format.json { head :no_content }

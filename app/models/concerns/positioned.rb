@@ -7,7 +7,8 @@ module Positioned
   DIRECTIONS = %w[ up down ].freeze
 
   included do
-    scope :ordered, -> { order(:position, :id) }
+    # 同じ position なら登録順 (主キーは UUIDv7 なので created_at を先に見る)
+    scope :ordered, -> { order(:position, :created_at, :id) }
 
     before_create :assign_next_position
   end

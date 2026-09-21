@@ -18,8 +18,8 @@ module ItemPurposes
 
     private
       def set_purpose
-        @item = Item.find(params[:item_id])
-        @purpose = @item.item_purposes.find(params[:purpose_id])
+        @item = Item.find_by_param!(params[:item_id])
+        @purpose = @item.item_purposes.find_by_param!(params[:purpose_id])
       end
   end
 end

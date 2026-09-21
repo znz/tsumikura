@@ -15,10 +15,20 @@ RSpec.describe StockTake, type: :model do
       expect(build(:stock_take, counted_on: Date.current + 1)).not_to be_valid
     end
 
-    # フォームを開いている間に保管場所が削除されると、そのままでは外部キー違反 (500) になる
-    it "削除済みの保管場所 id (0 を含む) では保存できない" do
+    # フォームを開いている間に保管場所が削除されると、そのままでは外部キー違反 (500) になる。
+    # uuid 列は UUID の形でない値を nil にキャストするので、経路が 2 つに分かれる:
+    # (1) 壊れた値 = *_before_type_cast が present なのに id が nil
+    # (2) 形は正しいが存在しない UUID = 関連が nil
+    it "壊れた保管場所 id (0 / -1) では保存できない" do
       expect(build(:stock_take, storage_location_id: 0)).not_to be_valid
       expect(build(:stock_take, storage_location_id: -1)).not_to be_valid
+    end
+
+    it "形は正しいが存在しない保管場所の UUID でも保存できない" do
+      stock_take = build(:stock_take, storage_location_id: nonexistent_uuid)
+
+      expect(stock_take).not_to be_valid
+      expect(stock_take.errors[:storage_location]).to be_present
     end
 
     it "保管場所は任意 (nil は全体の棚卸)" do

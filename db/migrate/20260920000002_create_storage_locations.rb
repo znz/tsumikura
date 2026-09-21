@@ -1,6 +1,6 @@
 class CreateStorageLocations < ActiveRecord::Migration[8.1]
   def change
-    create_table :storage_locations do |t|
+    create_table :storage_locations, id: :uuid, default: -> { "uuidv7()" } do |t|
       t.string :name, null: false
       t.integer :position, null: false, default: 0
 

@@ -82,11 +82,60 @@ item.current_quantity   == item.lots.sum(:remaining_quantity)      … キャッ
 
 ## 2. テーブル定義
 
+### 主キー (UUIDv7)
+
+**アプリのテーブルの主キーと外部キーはすべて `uuid`**。既定値は PostgreSQL 18 のネイティブ関数
+`uuidv7()` で、Ruby 側では生成しない。
+
+```ruby
+create_table :items, id: :uuid, default: -> { "uuidv7()" } do |t|
+  t.references :category, type: :uuid, foreign_key: { on_delete: :nullify }
+end
+```
+
+- **なぜ連番をやめたか**: Rails 既定の連番 `id` は URL に出ると予測可能で、`/items/1`〜`/items/50`
+  をたどれば登録件数も他の品目も見えてしまう。UUIDv7 なら URL から件数も前後のレコードも推測できない。
+- **なぜ DB で生成するか**: `uuidv7()` を列の既定値にしておけば、`insert_all` / `upsert_all` や
+  生 SQL からの INSERT でも同じ規則で id が振られる。Ruby 側で生成すると、経路が増えるたびに
+  振り忘れの穴ができる。**PostgreSQL 18 以上が必須**になる (docs/ops/development.md)。
+- **URL では Base58 の 22 文字**で表す (`to_param` / `Base58Uuid`)。36 文字の生の UUID は URL では
+  受け付けない (docs/spec/03-screens.md)。
+- **割り切り**: UUIDv7 は先頭 48 ビットがミリ秒のタイムスタンプなので、**URL からレコードの作成時刻は
+  読み取れる**。隠したいのは「件数と他のレコード」なので許容する (家庭内で使うアプリで、
+  作成時刻は画面にも出ている)。
+- **Solid Queue / Solid Cache のテーブルは bigint のまま**にする
+  (`db/migrate/20260919000001_*` / `..02_*` は触らない)。理由は 3 つ:
+  (1) それらの id は URL に出ない、(2) Solid Queue は `job_id` の昇順で FIFO を決めるので
+  連番であることに意味がある、(3) gem 側がスキーマを更新したときに食い違う。
+- **挿入順に意味があるところは `order(:created_at, :id)`** にする。`uuidv7()` は同一バックエンド内では
+  単調増加だが、**別の接続どうしの同一ミリ秒内では順序が保証されない**。
+  対象: `Lot#inbound_movement`、`Stock::UsageMovements.allocated_lot_ids` (引き当て順の復元)、
+  `Stock::Verifier` の入庫の特定、各モデルの `recent_first` / `ordered` の tie-break、
+  `User.order(:created_at, :id)` (管理画面の登録順)。
+  > **出典**: 「同一バックエンド内では単調増加」は PostgreSQL 18 の公式ドキュメント
+  > (`functions-uuid`) には書かれていない。根拠はソースの `src/backend/utils/adt/uuid.c` の
+  > コメントで、RFC 9562 の Method 3 に従って `rand_a` の 12 ビットにサブミリ秒を詰め、
+  > 同じバックエンドでは前回返した値より必ず大きくなるようにしている。
+  > **ドキュメント化された保証ではなく実装の挙動**なので、PostgreSQL のメジャーバージョンを
+  > 上げるときに再確認すること。`order(:created_at, :id)` にしてある箇所はこの保証に依存しない。
+
+- **ロックの順序は id の昇順のまま**でよい (`Stock::FinalizeStockTake#locked_items` /
+  `Stock::RecordBulkPurchase#lock_rows`)。デッドロック防止に必要なのは「一貫した全順序」であって、
+  挿入順である必要はない。
+- **bigint のままの DB にこのコードを当てると全画面が 500 になる**。migration のバージョン番号は
+  変えていないので `db:migrate` / `db:prepare` は「未適用なし」で黙って成功してしまう。
+  気づけるように、`to_param` (`Base58Uuid.encode_primary_key`) が UUID でない id を受けたら
+  `Base58Uuid::NotUuidPrimaryKey` で「DB を作り直してください」と言う
+  (docs/ops/development.md 3 節 / docs/ops/deployment.md 10 節)。
+- **新しいテーブルを足すとき**は `id: :uuid, default: -> { "uuidv7()" }` と `type: :uuid` を明示する。
+  `config.generators` の `primary_key_type: :uuid` は型だけを付け、既定値は付けない
+  (docs/ops/development.md)。
+
 ### 認証・ユーザー
 
 ```
 users
-  id                bigint pk
+  id                uuid pk (default uuidv7())
   email_address     string   not null, unique index  # Rails 標準の normalizes で小文字化。ログイン ID
   password_digest   string   not null
   name              string   not null                # 表示名「おかあさん」など

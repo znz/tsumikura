@@ -63,7 +63,8 @@ class PasskeysController < ApplicationController
       nickname: nickname
     )
 
-    render json: { id: passkey.id, nickname: passkey.nickname }, status: :created
+    # id は URL に入れうる値なので Base58 の 22 文字で返す (docs/spec/03-screens.md)
+    render json: { id: passkey.to_param, nickname: passkey.nickname }, status: :created
   rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique
     # 同じ credential ID が既にある (unique index) など
     render_registration_failure
@@ -72,7 +73,7 @@ class PasskeysController < ApplicationController
   def destroy
     # 他人のパスキーは消せない (id は Current.user のぶんだけを引く)。
     # 既に消えているパスキー (古い画面・別の端末で削除済み) は 404 にせず成功として扱う
-    Current.user.passkeys.find_by(id: params[:id])&.destroy
+    Current.user.passkeys.find_by_param(params[:id])&.destroy
 
     redirect_to account_path, notice: "パスキーを削除しました。"
   end

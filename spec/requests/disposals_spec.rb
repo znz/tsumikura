@@ -29,7 +29,7 @@ RSpec.describe "廃棄", type: :request do
       expired = create(:lot, item: item, initial_quantity: 2, expires_on: Date.current - 1)
       create(:lot, item: item, initial_quantity: 5, expires_on: Date.current + 30)
 
-      get new_item_disposal_path(item, lot_id: expired.id)
+      get new_item_disposal_path(item, lot_id: expired.to_param)
 
       expect(response.parsed_body.at("option[selected][value='#{expired.id}']")).to be_present
     end
@@ -94,8 +94,8 @@ RSpec.describe "廃棄", type: :request do
       expect(other_lot.reload.remaining_quantity).to eq 5
     end
 
-    # 8 バイト整数をはみ出す id を where に渡すと PG が範囲エラーを返して 500 になる
-    it "8 バイト整数をはみ出すロット id でも 422 (500 にしない)" do
+    # 引けない id を where に渡しても 500 にしない
+    it "UUID の形でないロット id でも 422 (500 にしない)" do
       record(lot_id: (2**63).to_s)
 
       expect(response).to have_http_status(:unprocessable_content)
@@ -107,10 +107,13 @@ RSpec.describe "廃棄", type: :request do
       expect(response).to have_http_status(:bad_request)
     end
 
-    it "存在しない品目は 404 で、記録も作られない" do
-      expect { post item_disposals_path(item_id: 0) }.not_to change { StockMovement.count }
+    # URL の id は Base58 の 22 文字。読めない値・存在しない値・生の UUID のどれも 404
+    it "引けない品目 id は 404 で、記録も作られない" do
+      [ 0, malformed_param, nonexistent_param, create(:item).id ].each do |item_id|
+        expect { post item_disposals_path(item_id: item_id) }.not_to change { StockMovement.count }
 
-      expect(response).to have_http_status(:not_found)
+        expect(response).to have_http_status(:not_found)
+      end
     end
   end
 
@@ -162,7 +165,7 @@ RSpec.describe "廃棄", type: :request do
       get item_path(item)
 
       expect(rendered_list("ロット一覧")).to include "期限切れ"
-      expect(response.body).to include new_item_disposal_path(item, lot_id: expired.id)
+      expect(response.body).to include new_item_disposal_path(item, lot_id: expired.to_param)
     end
 
     it "最近の記録に廃棄が並び、そこからも取り消せる" do

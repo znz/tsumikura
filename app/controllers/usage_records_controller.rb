@@ -58,16 +58,16 @@ class UsageRecordsController < ApplicationController
 
   private
     def set_item
-      @item = Item.find(params[:item_id])
+      @item = Item.find_by_param!(params[:item_id])
     end
 
     def set_usage_record
-      @usage_record = UsageRecord.find(params[:id])
+      @usage_record = UsageRecord.find_by_param!(params[:id])
       @item = @usage_record.item
     end
 
     def find_usage_record
-      @usage_record = UsageRecord.find_by(id: params[:id])
+      @usage_record = UsageRecord.find_by_param(params[:id])
       @item = @usage_record&.item
     end
 

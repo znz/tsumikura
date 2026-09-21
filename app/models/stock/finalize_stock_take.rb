@@ -52,7 +52,7 @@ module Stock
     private
       attr_reader :stock_take, :user
 
-      # デッドロック防止に id の昇順でロックする。
+      # デッドロック防止に id の昇順でロックする (UUID の昇順。順序が一貫していればよい)。
       # lock! は行ロックと同時に読み直すので、ここから先は確定時点の値で判断できる
       def locked_items
         ids = stock_take.stock_take_entries.counted.distinct.pluck(:item_id).sort

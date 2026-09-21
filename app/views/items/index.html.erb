@@ -16,14 +16,14 @@
     <div>
       <%= form.label :category_id, "カテゴリ", class: label_classes %>
       <%= form.select :category_id,
-            options_from_collection_for_select(@categories, :id, :name, @category_id),
+            options_from_collection_for_select(@categories, :to_param, :name, id_param(@category_id)),
             { include_blank: "すべて" }, class: field_classes %>
     </div>
 
     <div>
       <%= form.label :storage_location_id, "保管場所", class: label_classes %>
       <%= form.select :storage_location_id,
-            options_from_collection_for_select(@storage_locations, :id, :name, @storage_location_id),
+            options_from_collection_for_select(@storage_locations, :to_param, :name, id_param(@storage_location_id)),
             { include_blank: "すべて" }, class: field_classes %>
     </div>
 

@@ -11,7 +11,8 @@ class StockTake < ApplicationRecord
   validates :counted_on, presence: true
   # フォームを開いている間に保管場所が削除されると、そのままでは外部キー違反 (500) になる。
   # id が 0 のときも弾きたいので storage_location_id? ではなく present? で判定する
-  validates :storage_location, presence: { message: :invalid }, if: -> { storage_location_id.present? }
+  validates :storage_location, presence: { message: :invalid },
+    if: -> { storage_location_id_before_type_cast.present? }
 
   validate :counted_on_cannot_be_in_the_future
 
@@ -23,7 +24,7 @@ class StockTake < ApplicationRecord
   scope :drafts, -> { where(finalized_at: nil) }
   scope :finalized, -> { where.not(finalized_at: nil) }
   # 新しい棚卸から順に。同じ日なら後から作ったものを新しいとみなす
-  scope :recent_first, -> { order(counted_on: :desc, id: :desc) }
+  scope :recent_first, -> { order(counted_on: :desc, created_at: :desc, id: :desc) }
 
   def finalized?
     finalized_at.present?

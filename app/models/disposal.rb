@@ -10,12 +10,11 @@ class Disposal
 
   # 整数の上限。無いと 4 バイト整数をはみ出した入力が RangeError になり 422 ではなく 500 になる
   MAX_QUANTITY = Item::MAX_QUANTITY
-  # 8 バイト整数の上限。これを超える id を where に渡すと PG が範囲エラーを返して 500 になる
-  MAX_ID = 2**63 - 1
 
   attribute :quantity, :integer
   attribute :occurred_on, :date
-  attribute :lot_id, :integer          # 未指定なら 期限切れ → FEFO の順に引く
+  # 引き当て先のロット。主キーは UUID なので文字列で受け取る (未指定なら 期限切れ → FEFO の順)
+  attribute :lot_id, :string
   attribute :disposal_reason, :string  # expired / damaged / lost / other
   attribute :note, :string
 
@@ -27,16 +26,15 @@ class Disposal
   # presence と numericality は **別々の validates** にする。1 つにまとめると
   # allow_nil が presence にも掛かり、数量が空のまま検証を通ってしまう
   # (引き当てで nil を数えて 500 になる)。
-  # 数値の検査は *_before_type_cast (下で定義) を見るので、"1.5" や "2abc" が
+  # 数量の検査は quantity_before_type_cast (下で定義) を見るので、"1.5" や "2abc" が
   # 黙って 1 / 2 として記録されることはない。
   # allow_nil は「空欄のときに数値のエラーを presence と二重に出さない」ため
   validates :quantity, presence: true
   validates :quantity,
     numericality: { only_integer: true, greater_than: 0, less_than_or_equal_to: MAX_QUANTITY },
     allow_nil: true
-  validates :lot_id,
-    numericality: { only_integer: true, greater_than: 0, less_than_or_equal_to: MAX_ID },
-    allow_nil: true
+  # id は UUID の形 (8-4-4-4-12) だけを受け付ける。ほかの形は参照先を引けないので検証で弾く
+  validates :lot_id, format: { with: Base58Uuid::FORMAT, message: :invalid }, allow_blank: true
   validates :occurred_on, presence: true
   # 理由は必ず選ばせる (「なんとなく減った」を廃棄で片づけさせない)。
   # 候補は StockMovement の enum と 1 か所にそろえる
@@ -56,13 +54,9 @@ class Disposal
     @attributes["quantity"].value_before_type_cast
   end
 
-  def lot_id_before_type_cast
-    @attributes["lot_id"].value_before_type_cast
-  end
-
   # 参照先を引ける id か
   def lot_id_resolvable?
-    lot_id.is_a?(Integer) && lot_id.between?(1, MAX_ID)
+    Base58Uuid.uuid?(lot_id)
   end
 
   private

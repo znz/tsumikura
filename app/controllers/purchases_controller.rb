@@ -8,9 +8,6 @@ class PurchasesController < ApplicationController
   # 行ごとに入れる値 (購入日・店舗は共通)
   LINE_KEYS = %w[ initial_quantity pack_size pack_count price_yen expires_on ].freeze
 
-  # 8 バイト整数の上限。これを超える id を where に渡すと PG が範囲エラーを返して 500 になる
-  MAX_ID = 2**63 - 1
-
   NO_CHECKED_MESSAGE = "買い物リストでチェックした品目がありません。".freeze
   # 自由入力は品目が無いので在庫に記録できない。チェックを外すか、リストから外してもらう
   FREE_TEXT_ONLY_MESSAGE =
@@ -90,15 +87,14 @@ class PurchasesController < ApplicationController
         user: Current.user, today: @today, lines: lines, free_text_ids: free_text_id_params)
     end
 
-    # この画面に出ていた自由入力の行だけを「買った」として消す
+    # この画面に出ていた自由入力の行だけを「買った」として消す。
+    # hidden field なので id は POST の本文にしか出ない = UUID のまま
+    # (docs/spec/03-screens.md)。UUID の形でない値は捨てる
     def free_text_id_params
       ids = purchase_params[:free_text_ids]
       return [] unless ids.is_a?(Array)
 
-      ids.filter_map { |id|
-        value = Integer(id.to_s, 10, exception: false)
-        value if value&.between?(1, MAX_ID)
-      }
+      ids.filter_map { |id| id if Base58Uuid.uuid?(id) }
     end
 
     # チェックが自由入力だけのときは、在庫に記録できないことを伝える
@@ -126,7 +122,7 @@ class PurchasesController < ApplicationController
     end
 
     def checked_free_text_entries
-      ShoppingListItem.checked.free_text_entries.order(:id).to_a
+      ShoppingListItem.checked.free_text_entries.order(:created_at, :id).to_a
     end
 
     # purchase[lines][<行の id>][...]。壊れた形のパラメータで 500 にしない

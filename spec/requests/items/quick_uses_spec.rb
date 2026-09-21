@@ -175,11 +175,14 @@ RSpec.describe "ワンタップ使用", type: :request do
     end
   end
 
-  describe "存在しない品目" do
+  describe "引けない品目 id" do
+    # URL の id は Base58 の 22 文字。読めない値・存在しない値・生の UUID のどれも 404
     it "404 で、記録も作られない" do
-      expect { post item_quick_use_path(item_id: 0) }.not_to change { UsageRecord.count }
+      [ 0, malformed_param, nonexistent_param, create(:item).id ].each do |item_id|
+        expect { post item_quick_use_path(item_id: item_id) }.not_to change { UsageRecord.count }
 
-      expect(response).to have_http_status(:not_found)
+        expect(response).to have_http_status(:not_found)
+      end
     end
   end
 

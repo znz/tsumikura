@@ -244,7 +244,113 @@ dokku config:set tsumikura \
 | 在庫キャッシュの破損 | `dokku run tsumikura bin/rails stock:verify` で差異を検出し、`stock:recalculate` で台帳から再計算する |
 | VAPID 鍵 | 鍵を失うと全購読が無効になる。`dokku config:show tsumikura` から退避しておく |
 
-## 9. その他
+## 9. PostgreSQL のバージョン (18 以上が必須)
+
+アプリのテーブルの主キーは UUIDv7 で、既定値に **PostgreSQL 18 のネイティブ関数 `uuidv7()`** を使う
+(docs/spec/01-domain-model.md 2 節)。
+
+`app.json` の predeploy は **`bundle exec rails db:prepare`**。空の DB では migration ではなく
+**コミット済みの `db/schema.rb` の読み込み**になる (schema.rb は UUID 版がコミットされている)。
+17 以前の PostgreSQL では、その schema.rb の読み込み中に
+`PG::UndefinedFunction: ERROR: function uuidv7() does not exist` が出て predeploy が失敗し、
+`git push` の出力にそのまま現れてデプロイが止まる。
+
+- 開発 (`compose.yaml`) / CI (`.github/workflows/ci.yml`) / 本番 (dokku-postgres) のすべてを 18 にそろえる。
+- dokku-postgres は**プラグインの既定イメージ**でサービスを作るので、環境によっては 17 以前になる。
+  `dokku postgres:info tsumikura-db --version` で必ず確認する
+  ([初回デプロイ手順書 2 節](first-deploy.md#2-アプリ作成postgresql-サービス作成link))。
+- 18 未満だったときは、`--image-version 18` でサービスを作り直す (下の 10 節の手順がそのまま使える)。
+
+## 10. スキーマを作り直す (主キーの UUIDv7 化)
+
+Phase 13 のあと、アプリの全テーブルの主キーを連番の bigint から UUIDv7 に変えた
+(docs/plan/implementation-plan.md)。**変換の migration は用意していない**。本番 DB は動作確認用で
+捨ててよいので、**作り直す**のが手順になる。
+
+> ### 作業の前に読むこと
+>
+> - **この作業で本番の全データが消える**: 品目、在庫の記録 (購入・使用・廃棄・棚卸)、買い物リスト、
+>   ユーザー、Web Push の購読、パスキー。戻す手段は無い (手順 1 の退避は bigint のままの
+>   ダンプなので、新しいスキーマには読み込めない。記録を見返すためだけのもの)。
+> - **環境変数は消えない**: `RAILS_MASTER_KEY` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` /
+>   `APP_HOST` / `WEBAUTHN_*` などは**アプリ側**に付いているので再設定は不要
+>   (`dokku config:show tsumikura` で確認できる)。
+> - **作業後にやること**: (1) `tsumikura:create_admin` で管理者を作り直す (2) 各端末で通知を
+>   登録し直す (`/account`) (3) 各端末でパスキーを登録し直す (`/account`)
+>   (4) **バックアップのスケジュールを設定し直す** (DB サービスごと作り直すので消える)。
+
+> ### **DB を作り直す前に、このブランチを本番に push しない**
+>
+> migration のバージョン番号は変えずに中身だけ書き換えてあるので、bigint のままの DB に対して
+> predeploy (`db:prepare`) は**「未適用の migration なし」で成功する**。デプロイは通るのに、
+> そのあと `to_param` が整数の id を Base58 にしようとして `Base58Uuid::NotUuidPrimaryKey` になり、
+> **全画面が 500 になる**。ログにこの例外が出ていたら、DB が古いということ。
+>
+> すでに push してしまった場合も、下の手順をそのまま実行すれば直る。ただし手順 5 の
+> `git push` は `Everything up-to-date` になって何も起きないので、代わりに
+> `dokku ps:rebuild tsumikura` で predeploy からやり直す。
+
+```bash
+# 1. 念のため今の中身を退避する (bigint のままのダンプ。新スキーマには読み込めない)
+dokku postgres:export tsumikura-db > tsumikura-$(date +%Y%m%d).dump
+
+# 2. アプリを止める。DATABASE_URL が無い状態で動いていると起動に失敗し続ける
+dokku ps:stop tsumikura
+
+# 3. link を外す。--no-restart はアプリの再起動を抑える
+#    (フラグの有無は `dokku postgres:help unlink` で確認。無ければ付けずに実行してよい)
+dokku postgres:unlink tsumikura-db tsumikura --no-restart
+
+# 4. サービスを作り直す。--image-version 18 は必須ではないが、
+#    プラグインの既定が 17 以前の環境では明示する (9 節)
+dokku postgres:destroy tsumikura-db
+dokku postgres:create tsumikura-db --image-version 18
+dokku postgres:info tsumikura-db --version   # 18 であることを確認する
+
+# 5. link し直す (DATABASE_URL が再設定される)。ここも --no-restart
+#    (フラグの有無は `dokku postgres:help link` で確認)
+dokku postgres:link tsumikura-db tsumikura --no-restart
+
+# 6. 再デプロイ。app.json の predeploy (db:prepare) が空の DB に db/schema.rb を読み込む
+git push dokku <ブランチ>:main
+# すでに push 済みで Everything up-to-date になるときは、代わりにこれ
+# dokku ps:rebuild tsumikura
+
+# 7. 最初の管理者を作り直す
+dokku run tsumikura bin/rails tsumikura:create_admin \
+  ADMIN_EMAIL=admin@example.com ADMIN_NAME=かんりしゃ
+
+# 8. バックアップのスケジュールを設定し直す (first-deploy.md 10 節)
+dokku postgres:backup-auth tsumikura-db "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY"
+dokku postgres:backup-schedule tsumikura-db "0 4 * * *" <bucket>
+dokku postgres:backup-schedule-cat tsumikura-db   # 設定内容を確認する
+```
+
+作り直したあとに戻す / 戻さないもの:
+
+| もの | どうなるか |
+|---|---|
+| 環境変数 (`VAPID_*` / `WEBAUTHN_*` / `RAILS_MASTER_KEY` / `APP_HOST` など) | **アプリ側**に付いているので消えない。再設定は不要 (`dokku config:show tsumikura` で確認する) |
+| バックアップのスケジュール | **サービス側**に付いているので `postgres:destroy` で消える。`postgres:backup-auth` と `postgres:backup-schedule` を**設定し直す** (手順 8 / [初回デプロイ手順書 10 節](first-deploy.md#10-db-バックアップの設定)) |
+| Web Push の購読 | DB にあるので消える。各端末で通知を**登録し直す** (`/account` の「この端末で通知を受け取る」) |
+| パスキー | DB にあるので消える。ログイン後に**登録し直す** (`/account`)。認証器側に残った古いパスキーは使えないので消してよい |
+| ユーザー・品目・在庫の記録・買い物リスト | すべて消える。動作確認用のデータなので作り直す |
+
+- コマンドの書式は `dokku postgres:help` で確認すること (プラグインのバージョンで引数が変わる)。
+  `--no-restart` が無いプラグインでは付けずに実行してよい。手順 2 でアプリを止めてあるので、
+  `link` / `unlink` が再起動を試みても止まったままになる (手順 6 の push / rebuild で起動し直る)。
+- `postgres:destroy` は確認のためにサービス名の入力を求める。`--force` は使わない。
+- **手順 2 を飛ばして `unlink` すると**、`DATABASE_URL` が消えたままアプリが再起動して落ち続ける。
+
+### 作業後の確認
+
+- `https://<ホスト>/up` が 200。
+- ログインして品目を 1 件作り、**URL が `/items/<22 文字の Base58>` になっている**こと
+  (連番でも 36 文字の UUID でもないこと)。
+- `dokku logs tsumikura -n 200` に `Base58Uuid::NotUuidPrimaryKey` が出ていないこと
+  (出ていたら DB が古いまま = 手順 3〜6 が効いていない)。
+
+## 11. その他
 
 - **Kamal 関連の削除**: `config/deploy.yml`、`.kamal/`、`bin/kamal`、`Gemfile` の `gem "kamal"`、`.dockerignore` の「Ignore Kamal files」ブロック。
 - **Active Storage**: v1 では品目画像を扱わないので未使用。将来に備えて永続ストレージのマウントだけ用意しておいてもよい。

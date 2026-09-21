@@ -7,7 +7,7 @@ module StockTakes
     def create
       # すでに確定済みなら 404 (確定済みの棚卸は編集できない)。
       # 2 台で同時に押された場合はロックの後の AlreadyFinalized で拾う
-      stock_take = StockTake.drafts.find(params[:stock_take_id])
+      stock_take = StockTake.drafts.find_by_param!(params[:stock_take_id])
 
       Stock::FinalizeStockTake.call(stock_take, user: Current.user)
 

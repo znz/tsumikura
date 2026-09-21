@@ -11,8 +11,6 @@ class StockTakeEntry < ApplicationRecord
   # 整数カラムの上限。numericality は 4 バイト整数の範囲を見ないので、上限が無いと
   # 書き込み時に ActiveModel::RangeError になり 422 ではなく 500 になる
   MAX_QUANTITY = Item::MAX_QUANTITY
-  # 8 バイト整数の上限。これを超える id を where に渡すと PG が範囲エラーを返して 500 になる
-  MAX_ID = 2**63 - 1
   # 「大きく減った」とみなす下限。打ち間違い (12 を 1 と入れるなど) は消費として
   # 予測に残り続けるので、確認画面で注意の印を出す。1 個の減りは日常なので数えない
   LARGE_DECREASE_MINIMUM = 2
@@ -93,16 +91,16 @@ class StockTakeEntry < ApplicationRecord
       raise Finalized, "確定済みの棚卸 ##{stock_take_id} の明細は変更できません"
     end
 
-    # 参照先を引ける id か。8 バイト整数をはみ出す値のまま関連をたどると、
-    # クエリが ActiveModel::RangeError になり 422 ではなく 500 になる
+    # 参照先を引ける id か。uuid 列は UUID の形でない値を nil にキャストするので、
+    # 「送られてきたのに nil」= 引けない id として扱う (422。500 にはならない)
     def lot_id_resolvable?
-      lot_id.is_a?(Integer) && lot_id.between?(1, MAX_ID)
+      lot_id.present? || lot_id_before_type_cast.blank?
     end
 
     # 他の品目のロットは数えられない (DB 側にも複合外部キーがある)
     def lot_must_belong_to_item
-      return if lot_id.blank?
       return errors.add(:lot, :invalid) unless lot_id_resolvable?
+      return if lot_id.blank?
       return if item_id.blank?
 
       errors.add(:lot, :mismatched_item) if lot.blank? || lot.item_id != item_id

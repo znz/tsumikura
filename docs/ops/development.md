@@ -29,6 +29,44 @@ ruby = "4.0.7"
 
 ## 3. PostgreSQL (Docker Compose)
 
+**PostgreSQL 18 以上が必須。** アプリのテーブルの主キーは UUIDv7 で、既定値に PostgreSQL 18 の
+ネイティブ関数 `uuidv7()` を使う (docs/spec/01-domain-model.md 2 節)。17 以前では migration が
+`function uuidv7() does not exist` で落ちる。開発 (compose.yaml)・CI・本番 (dokku-postgres) の
+すべてを 18 にそろえること。
+
+### UUIDv7 化のブランチを取り込んだら DB を作り直す
+
+主キーを bigint から UUID に変えたとき、**migration のバージョン番号は変えずに中身だけ書き換えた**
+(変換の migration は作っていない)。そのため、bigint のままの DB に対して `db:migrate` /
+`db:prepare` を流しても「未適用の migration なし」で**成功してしまい、何も起きない**。
+その状態でアプリを動かすと `to_param` が整数の id を Base58 にしようとして
+`Base58Uuid::NotUuidPrimaryKey` になり、**全画面が 500 になる** (migration は失敗しないので
+原因に気づきにくい)。
+
+```bash
+# このブランチを取り込んだら、開発 DB と test DB を作り直す
+mise x -- bin/rails db:drop db:create db:schema:load
+mise x -- bin/rails db:test:prepare
+```
+
+`db/schema.rb` は UUID 版がコミットされているので、ふだんはこれで足りる
+(`db:schema:load` は schema.rb をそのまま流す)。
+
+**migration から schema.rb を作り直すときだけ**、先に schema.rb を消してから migrate する。
+
+```bash
+rm db/schema.rb
+mise x -- bin/rails db:drop db:create db:migrate
+```
+
+- **Rails 8.1 の `db:migrate` は、空の DB では先に既存の `db/schema.rb` を読み込む**
+  (`schema_migrations` にそのバージョンまでが入るので、以降の migration は「適用済み」として
+  飛ばされる)。古い bigint の schema.rb を置いたまま `db:migrate` すると、UUID 化した
+  migration が 1 本も実行されない。**主キーの型を変えた直後に 834 件の spec が落ちた原因はこれ**で、
+  実装側の問題ではなかった。
+- 作り直したあと `db/schema.rb` の差分を確認する (`id: :uuid, default: -> { "uuidv7()" }` に
+  なっていること)。
+
 ローカルに `psql` が無いのでコンテナで立てる ([`compose.yaml`](../../compose.yaml))。
 
 ```yaml
@@ -220,6 +258,7 @@ config.i18n.available_locales = [ :ja ]
 | `test` / `system-test` | `bin/rails db:test:prepare tailwindcss:build` として Tailwind を明示的にビルドする (5 節。`db:test:prepare` だけではビルドされない) |
 | 全ジョブ | `ruby/setup-ruby@v1` は `.ruby-version` を読む。[`ruby-builder-versions.json`](https://github.com/ruby/setup-ruby/blob/master/ruby-builder-versions.json) に `4.0.7` が載っていることは確認した (2026-09-19)。実際にセットアップできるかは GitHub Actions の初回実行で確認する ([未決事項](../plan/open-questions.md)) |
 | `scan_ruby` / `scan_js` / `lint` | 変更なし |
+| `test` / `system-test` | `services.postgres.image` は **`postgres:18` に固定**する (バージョン未固定だと `uuidv7()` の無い版に当たって全 migration が落ちる) |
 
 `config/ci.rb` (`bin/ci` から読まれる):
 
@@ -239,7 +278,36 @@ end
 - `bin/setup --skip-server` が `db:prepare` を実行するので、手元では先に `docker compose up -d --wait` を済ませておく。
 - `db/seeds.rb` は **ENV なしでも成功する冪等な実装**にする (CI の `db:seed:replant` を通すため)。
 
-## 9. よく使うコマンド
+## 9. 新しいテーブルを作る
+
+アプリのテーブルの主キーと外部キーは `uuid` で、既定値は `uuidv7()`
+(docs/spec/01-domain-model.md 2 節)。
+
+```ruby
+class CreateThings < ActiveRecord::Migration[8.1]
+  def change
+    create_table :things, id: :uuid, default: -> { "uuidv7()" } do |t|
+      t.references :item, type: :uuid, null: false, foreign_key: true
+      t.timestamps
+    end
+  end
+end
+```
+
+- `config.generators` に `g.orm :active_record, primary_key_type: :uuid` を入れてあるので、
+  ジェネレータは `id: :uuid` と `type: :uuid` を付けてくれる。**`default: -> { "uuidv7()" }` だけは
+  付かないので手で足す**。忘れると `null value in column "id"` で INSERT が落ちる。
+- `t.references` / `add_reference` には必ず `type: :uuid` を付ける。複合外部キー
+  (`(lot_id, item_id) → lots(id, item_id)` など) は型が合っていないと張れない。
+- 主キーそのものではない `bigint` 列 (`passkeys.sign_count` など) はそのままでよい。
+- **Solid Queue / Solid Cache の migration (`20260919000001` / `..02`) は触らない**。
+  bigint のままにする (理由は docs/spec/01-domain-model.md 2 節)。
+- 挿入順で並べたいときは `order(:created_at, :id)`。`uuidv7()` は別の接続どうしの同一ミリ秒では
+  順序を保証しない。
+- URL に出す id は `to_param` (Base58 の 22 文字)、引くのは `find_by_param!`
+  (docs/spec/03-screens.md 3 節)。
+
+## 10. よく使うコマンド
 
 ```bash
 docker compose up -d --wait          # PostgreSQL 起動

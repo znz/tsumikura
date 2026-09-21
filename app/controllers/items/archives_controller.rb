@@ -16,7 +16,7 @@ module Items
 
     private
       def set_item
-        @item = Item.find(params[:item_id])
+        @item = Item.find_by_param!(params[:item_id])
       end
   end
 end

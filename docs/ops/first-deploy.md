@@ -60,6 +60,8 @@ dokku git:report tsumikura   # "Git deploy branch" が main になっている�
 >
 > **2026-09-21 の初回デプロイの結果: 作成された PostgreSQL は 18 で、開発用 `compose.yaml` の `postgres:18` と同じだった。`compose.yaml` の変更は不要。**
 
+**PostgreSQL 18 以上が必須。** アプリのテーブルの主キーは UUIDv7 で、既定値に PostgreSQL 18 のネイティブ関数 `uuidv7()` を使う (docs/spec/01-domain-model.md 2 節)。17 以前のサービスが作られた場合、predeploy の `db:prepare` が `db/schema.rb` を読み込む途中で `PG::UndefinedFunction: ERROR: function uuidv7() does not exist` になり、`git push` の出力にそのまま出てデプロイが止まる。その場合は `dokku postgres:destroy` して `--image-version 18` で作り直すこと (下の注意書きを読んでから)。
+
 PostgreSQL サービスを作る前に、開発用 [`compose.yaml`](../../compose.yaml) が `postgres:18` を使っていることを確認しておく。既定の手順は、**バージョンを指定せずプラグインの既定イメージで作成し、実際のバージョンを確認してから `compose.yaml` 側を合わせる**。
 
 ```bash
@@ -67,7 +69,8 @@ dokku postgres:create tsumikura-db
 dokku postgres:info tsumikura-db --version
 ```
 
-- 確認した値が `compose.yaml` の `postgres:18` と異なる場合は、`compose.yaml` の `image: postgres:18` をそのバージョンに合わせて修正する (開発と本番のメジャーバージョンを揃えておく)。
+- 確認した値が **18 未満**なら、そのままではデプロイできない。サービスを作り直す (下の `--image-version 18`)。
+- 確認した値が 18 より新しい場合は、`compose.yaml` の `image: postgres:18` をそのバージョンに合わせて修正する (開発と本番のメジャーバージョンを揃えておく)。
 - 明示的に `18` を指定して作りたい場合は `dokku postgres:create tsumikura-db --image-version 18` が使えるが、先に `sudo dokku plugin:update postgres` でプラグインを更新しておく。**PostgreSQL 18 はデータディレクトリが `/var/lib/postgresql` に変わっている。未対応の古いプラグインで指定すると、データが永続ボリュームの外に置かれる恐れがある**。`grep -n PG_MAJOR /var/lib/dokku/plugins/available/postgres/functions` でプラグインが 18 を認識しているか確認してから使う (確認事項参照)。
 
 作成したアプリに link する (まだ push していないので再起動は起きない)。`DATABASE_URL` は自動で設定される。
@@ -213,7 +216,7 @@ dokku domains:report tsumikura
 dokku domains:set tsumikura $APP_HOST
 ```
 
-v1 では Active Storage を使わないが、将来 (品目の写真) に備えて永続ストレージのマウントだけ用意しておく ([デプロイ構成](deployment.md#9-その他))。コンテナ内のアプリは非 root の `rails` ユーザー (uid/gid 1000、`Dockerfile` の既定) で動くので、マウント元ディレクトリの所有者をそれに合わせる。`--chown heroku` を付けると uid/gid 1000 の所有者で作成される (確認事項: このオプションが無い古いプラグインでは `sudo chown -R 1000:1000 /var/lib/dokku/data/storage/tsumikura` で代替する)。
+v1 では Active Storage を使わないが、将来 (品目の写真) に備えて永続ストレージのマウントだけ用意しておく ([デプロイ構成](deployment.md#11-その他))。コンテナ内のアプリは非 root の `rails` ユーザー (uid/gid 1000、`Dockerfile` の既定) で動くので、マウント元ディレクトリの所有者をそれに合わせる。`--chown heroku` を付けると uid/gid 1000 の所有者で作成される (確認事項: このオプションが無い古いプラグインでは `sudo chown -R 1000:1000 /var/lib/dokku/data/storage/tsumikura` で代替する)。
 
 ```bash
 dokku storage:ensure-directory --chown heroku tsumikura

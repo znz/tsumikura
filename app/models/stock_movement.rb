@@ -26,7 +26,7 @@ class StockMovement < ApplicationRecord
   # ここでは廃棄と棚卸の調整だけを見る (在庫不足の補填は操作ではないので出さない)
   scope :recorded_adjustments, -> { kind_adjustment.where.not(stock_take_entry_id: nil) }
   # 新しい記録から順に。同じ日なら後から記録したものを新しいとみなす
-  scope :recent_first, -> { order(occurred_on: :desc, id: :desc) }
+  scope :recent_first, -> { order(occurred_on: :desc, created_at: :desc, id: :desc) }
 
   # 0 の記録は在庫を動かさないので作らせない (DB 側にも check 制約がある)
   validates :quantity, numericality: {

@@ -149,7 +149,38 @@
 - 最低在庫数を設定している品目には「最低在庫数 n 単位 ちょうどで「そろそろ購入」、下回ると「購入推奨」になります。」と境界を書く (仕様 7 節)。
 - ロット一覧と購入の編集フォームは、「期限を管理する」が外れていても **`expires_on` が入っていれば期限を出す** ([予測](02-forecast.md) 12 節: 判定は `expires_on` の有無で行うため、隠すと直す手段が廃棄しか無くなる)。
 
-## 3. ルーティング案
+## 3. URL に出る id (Base58 の 22 文字)
+
+主キーは UUIDv7 (docs/spec/01-domain-model.md 2 節) だが、URL には **Base58 の 22 文字**で出す。
+`0` `O` `I` `l` を除いたアルファベットなので、口頭で読み上げても写し間違えにくい。
+
+```
+/items/3xK9mQ2vT7bR5nF8cW1jHd        パスの :id / :item_id / :purpose_id / :lot_id …
+/items?category_id=3xK9mQ2vT7bR5nF8cW1jHd   GET のクエリに出る id も Base58
+```
+
+- 変換は `lib/base58_uuid.rb` (Rails にも DB にも依存しない純粋な関数)。
+  モデル側の `to_param` と `find_by_param!` / `find_by_param` は
+  `app/models/concerns/base58_param.rb` (`ApplicationRecord` が include)。
+- **長さは常に 22 文字**で、足りないぶんは先頭を `1` (= 0) で埋める。可変長にすると
+  1 つの UUID に複数の表現ができて URL が一意にならない。
+- **生の UUID は URL では受け付けない**。36 文字を渡しても `find_by_param!` は
+  `ActiveRecord::RecordNotFound` (404) にする。入口を 2 つ持たないため。
+- **読めない値は 500 にしない**。パスの id は 404、GET のクエリの絞り込み (`category_id` /
+  `storage_location_id`) は「指定なし」に倒す (0 件にして「品目が無い」ように見せない)。
+- **POST / PATCH の本文に入る id は UUID のまま**。URL に出ないので短くする理由がなく、
+  Base58 にすると `where` に渡す前に必ずデコードが要る。
+  対象: セレクトの値 (`usage_record[lot_id]` / `lot[store_id]` / `disposal[lot_id]`)、
+  hidden (`shopping_list_item[item_id]` / `purchase[free_text_ids][]`)、
+  `counts[<品目の id>][lots][<ロットの id>]` や `purchase[lines][<行の id>]` のようなキー。
+- **DOM の id (`dom_id`) は UUID のまま**。`dom_id` は `to_key` を使うので Turbo Stream の
+  ターゲットと自然に一致する。`shopping_list_row_item_<item_id>` も同じ規則。
+- JSON で id を返すところ (Web Push の購読・パスキーの登録) は、クライアントがそのまま URL に
+  入れるので **Base58 で返す**。
+- **割り切り**: UUIDv7 は先頭にミリ秒のタイムスタンプが入るので、URL から作成時刻は読み取れる
+  (件数や前後のレコードは推測できない)。
+
+## 4. ルーティング案
 
 ```ruby
 Rails.application.routes.draw do
@@ -238,7 +269,7 @@ Rails.application.routes.draw do
 end
 ```
 
-## 4. 画面まわりの方針
+## 5. 画面まわりの方針
 
 - 画面の即時更新は Turbo Stream のレスポンスで行う。他のデバイスへのリアルタイム配信 (Action Cable のブロードキャスト) は行わない ([デプロイ](../ops/deployment.md) 参照)。
 - 数値入力は `inputmode="numeric"` を付けてスマホのテンキーを出す。

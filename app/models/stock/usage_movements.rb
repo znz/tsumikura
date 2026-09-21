@@ -17,7 +17,8 @@ module Stock
 
     # 引き当てているロットの id (編集で引き直すときの優先順)
     def self.allocated_lot_ids(usage_record)
-      usage_record.stock_movements.where(quantity: ...0).order(:id).pluck(:lot_id)
+      # 引き当てた順 (挿入順)。主キーは UUIDv7 なので created_at を先に見る
+      usage_record.stock_movements.where(quantity: ...0).order(:created_at, :id).pluck(:lot_id)
     end
 
     def initialize(usage_record)

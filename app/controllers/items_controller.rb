@@ -64,16 +64,14 @@ class ItemsController < ApplicationController
 
   private
     def set_item
-      @item = Item.find(params[:id])
+      @item = Item.find_by_param!(params[:id])
     end
 
-    # 絞り込みの id。セレクトの選択状態を保つため整数にそろえ、
-    # 正の整数でなければ「指定なし」として扱う
+    # 絞り込みの id。URL に出るので Base58 の 22 文字で受け取り、UUID に戻す
+    # (docs/spec/03-screens.md)。Base58 として読めなければ「指定なし」として扱う
+    # (0 件にして「品目が無い」ように見せるより、絞り込まない方が親切)
     def filter_id(value)
-      return nil unless value.is_a?(String)
-
-      id = Integer(value, 10, exception: false)
-      id if id&.positive?
+      Base58Uuid.decode_or_nil(value)
     end
 
     # 一覧の絞り込みセレクトと、フォームのカテゴリ / 保管場所セレクトの選択肢

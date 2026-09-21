@@ -181,14 +181,17 @@ RSpec.describe "まとめ購入", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
     end
 
+    # 壊れた値 (uuid に cast できない) と、形は正しいが存在しない UUID の両方
     it "存在しない店舗では記録できない (外部キー違反で 500 にしない)" do
-      entry = check(urgent_item)
+      [ "0", nonexistent_uuid ].each do |store_id|
+        entry = check(urgent_item)
 
-      post purchases_path, params: { purchase: {
-        acquired_on: Date.current.to_s, store_id: "0", lines: line_params(entry)
-      } }
+        post purchases_path, params: { purchase: {
+          acquired_on: Date.current.to_s, store_id: store_id, lines: line_params(entry)
+        } }
 
-      expect(response).to have_http_status(:unprocessable_content)
+        expect(response).to have_http_status(:unprocessable_content)
+      end
     end
 
     it "4 バイト整数をはみ出す数量でも 500 にしない" do

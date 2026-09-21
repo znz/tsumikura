@@ -1,9 +1,9 @@
 class CreateWebPushSubscriptions < ActiveRecord::Migration[8.1]
   def change
-    create_table :web_push_subscriptions do |t|
+    create_table :web_push_subscriptions, id: :uuid, default: -> { "uuidv7()" } do |t|
       # ユーザーは物理削除しない (deactivated_at で無効化する) ので restrict でよい。
       # 無効化しても購読は消さない (無効化は取り消せるため)。配信側が User.active で落とす
-      t.references :user, null: false, foreign_key: { on_delete: :restrict }
+      t.references :user, type: :uuid, null: false, foreign_key: { on_delete: :restrict }
       # Push サービスが払い出す URL。**端末 + ブラウザに 1 つ**なので一意にする。
       # 同じ端末で別の家族がログインして購読し直したら user_id を付け替える
       # (docs/spec/04-notifications.md 3 節)。通常は 200-500 バイト

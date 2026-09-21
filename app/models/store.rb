@@ -4,7 +4,7 @@ class Store < ApplicationRecord
   has_many :lots, dependent: :nullify
 
   # 店舗は position を持たない (docs/spec/01-domain-model.md 2 節) ので名前順に並べる
-  scope :ordered, -> { order(:name, :id) }
+  scope :ordered, -> { order(:name, :created_at, :id) }
 
   normalizes :name, with: Normalizations::STRIP
 

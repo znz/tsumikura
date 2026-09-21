@@ -12,9 +12,6 @@ class ShoppingListItemsController < ApplicationController
   # 受け取らない (他人名義の行や、任意の時刻のチェックを作らせない)
   PERMITTED_ATTRIBUTES = %i[ item_id free_text quantity checked snoozed manual ].freeze
 
-  # 8 バイト整数の上限。これを超える id を where に渡すと PG が範囲エラーを返して 500 になる
-  MAX_ID = 2**63 - 1
-
   # 行が消えていた。購入で片づいたのか、誰かが掃除したのかは区別できないので両方を伝える
   # (品目 id から行を作り直したりはしない。購入直後の古い画面から再チェックできてしまう)
   GONE_MESSAGE =
@@ -133,15 +130,19 @@ class ShoppingListItemsController < ApplicationController
       render "shopping_lists/show", status: :unprocessable_content
     end
 
+    # item_id は POST の本文 (hidden) にしか出ないので UUID のまま受け取る
+    # (docs/spec/03-screens.md)。UUID の形をしていない値は uuid 型へのキャストで
+    # nil になり、find_by は 500 ではなく「見つからない」を返す
     def find_item
-      item = Item.active.find_by(id: resolved_id(entry_params[:item_id]))
+      item = Item.active.find_by(id: uuid_param(entry_params[:item_id]))
       redirect_to(shopping_list_path, alert: MISSING_ITEM_MESSAGE) if item.nil?
       item
     end
 
-    # まとめ購入や掃除で消えた行への操作。404 ではなく、やり直せることを伝えて一覧へ戻す
+    # まとめ購入や掃除で消えた行への操作。404 ではなく、やり直せることを伝えて一覧へ戻す。
+    # URL の id は Base58 の 22 文字なので、読めなければ「消えていた」と同じ扱いにする
     def find_entry
-      entry = ShoppingListItem.find_by(id: resolved_id(params[:id]))
+      entry = ShoppingListItem.find_by_param(params[:id])
       redirect_to(shopping_list_path, alert: GONE_MESSAGE) if entry.nil?
       entry
     end
@@ -224,10 +225,7 @@ class ShoppingListItemsController < ApplicationController
       @entry_params ||= params.expect(shopping_list_item: PERMITTED_ATTRIBUTES)
     end
 
-    def resolved_id(value)
-      return nil unless value.is_a?(String)
-
-      id = Integer(value, 10, exception: false)
-      id if id&.between?(1, MAX_ID)
+    def uuid_param(value)
+      value if Base58Uuid.uuid?(value)
     end
 end

@@ -8,11 +8,9 @@ class Purchase
   include ActiveModel::Model
   include ActiveModel::Attributes
 
-  # 8 バイト整数の上限。これを超える id を where に渡すと PG が範囲エラーを返して 500 になる
-  MAX_ID = 2**63 - 1
-
   attribute :acquired_on, :date
-  attribute :store_id, :integer
+  # 店舗。主キーは UUID なので文字列で受け取る (セレクトの値は POST の本文にしか出ない)
+  attribute :store_id, :string
 
   attr_reader :lines, :user, :today, :free_text_ids
 
@@ -41,7 +39,7 @@ class Purchase
   end
 
   def store
-    return nil unless store_id.is_a?(Integer) && store_id.between?(1, MAX_ID)
+    return nil unless Base58Uuid.uuid?(store_id)
 
     @store ||= Store.find_by(id: store_id)
   end

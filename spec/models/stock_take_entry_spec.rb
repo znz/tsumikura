@@ -69,8 +69,9 @@ RSpec.describe StockTakeEntry, type: :model do
       expect(build(:stock_take_entry, item: item, lot: lot)).to be_valid
     end
 
-    # 8 バイト整数をはみ出す id を where に渡すと PG が範囲エラーを返して 500 になる
-    it "8 バイト整数をはみ出すロット id でも例外にならず検証エラーになる" do
+    # uuid 列は UUID の形でない値を nil にキャストする。
+    # 「送られてきたのに引けない」を黙って「未指定」にしないことを固定する
+    it "UUID の形でないロット id は例外にならず検証エラーになる" do
       entry = build(:stock_take_entry, item: item, lot_id: 2**63)
 
       expect(entry).not_to be_valid

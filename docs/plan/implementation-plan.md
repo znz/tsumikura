@@ -1241,6 +1241,44 @@ Phase 12 からの申し送り
 
 ---
 
+## Phase 13 後の変更: 主キーの UUIDv7 化
+
+**ゴール**: URL から件数も他のレコードも推測できないようにする。
+
+**決めたこと** (詳細は [データモデル 2 節](../spec/01-domain-model.md) /
+[画面 3 節](../spec/03-screens.md))
+
+- **アプリの全テーブルの主キーと外部キーを `uuid`** にし、既定値を PostgreSQL 18 の
+  ネイティブ関数 `uuidv7()` にした。Ruby 側では生成しない (`insert_all` / `upsert_all` でも
+  DB が振る)。対象は users / sessions / passkeys / categories / storage_locations / stores /
+  items / item_purposes / lots / stock_movements / usage_records / stock_takes /
+  stock_take_entries / shopping_list_items / web_push_subscriptions / item_alert_states。
+- **Solid Queue / Solid Cache のテーブルは bigint のまま**。id が外に出ず、Solid Queue は
+  `job_id` の昇順で FIFO を決め、gem のスキーマ更新と食い違うため。
+- **URL では Base58 の 22 文字**。`lib/base58_uuid.rb` (純粋な関数) +
+  `app/models/concerns/base58_param.rb` (`to_param` / `find_by_param!` / `find_by_param`)。
+  パスと GET のクエリだけが対象で、POST の本文に入る id は UUID のまま。
+- **変換の migration は作らず、既存の `create_table` を書き換えた**。開発 DB も本番 DB も
+  作り直す (本番は動作確認用。手順は [デプロイ 10 節](../ops/deployment.md#10-スキーマを作り直す-主キーの-uuidv7-化))。
+- **整数の id を前提にしていたコードを直した**: `MAX_ID = 2**63 - 1` による範囲検査 →
+  UUID の形の検証 (`Base58Uuid::FORMAT`)、ActiveModel の `attribute :lot_id, :integer` →
+  `:string`、`Forecast::Aggregator` の生 SQL の `?::bigint` → `?::uuid`、
+  挿入順に依存していた `order(:id)` → `order(:created_at, :id)`。
+- **uuid 列は UUID の形でない値を nil にキャストする**ので、「送られてきたのに引けない id」を
+  黙って「未指定」にしないよう、参照の検証は `*_before_type_cast` を見る
+  (422 のままにする。500 にはならない)。
+
+**やり残し・申し送り**
+
+- UUIDv7 は先頭 48 ビットがミリ秒のタイムスタンプなので、**URL から作成時刻は読み取れる**。
+  隠したかったのは件数と他のレコードなので許容した。
+- `rake stock:verify` の出力や例外メッセージの `#<id>` は UUID になって読みにくい。
+  実害はないので直していない。
+- `.github/workflows/ci.yml` の postgres サービスを `postgres:18` に固定した
+  (未固定だと `uuidv7()` の無い版に当たって全 migration が落ちる)。
+
+---
+
 ## 付録 A: 変更が必要な既存ファイル
 
 | ファイル | 変更内容 | フェーズ |

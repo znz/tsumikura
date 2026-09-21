@@ -49,11 +49,11 @@ class ItemPurposesController < ApplicationController
 
   private
     def set_item
-      @item = Item.find(params[:item_id])
+      @item = Item.find_by_param!(params[:item_id])
     end
 
     def set_purpose
-      @purpose = @item.item_purposes.find(params[:id])
+      @purpose = @item.item_purposes.find_by_param!(params[:id])
     end
 
     # position は ItemPurposes::PositionsController、archived_at は

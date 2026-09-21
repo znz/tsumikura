@@ -54,7 +54,7 @@
               class: secondary_button_classes("cursor-pointer text-red-700") %>
       <% elsif record.stock_take_entry %>
         <%# 棚卸の調整は単体で取り消さない (数え直すなら新しい棚卸をする) %>
-        <%= link_to "棚卸を見る", stock_take_path(record.stock_take_entry.stock_take_id),
+        <%= link_to "棚卸を見る", stock_take_path(id_param(record.stock_take_entry.stock_take_id)),
               class: secondary_button_classes %>
       <% end %>
     <% end %>

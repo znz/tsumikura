@@ -91,7 +91,7 @@ RSpec.describe "品目", type: :request do
       hit = create(:item, name: "ラップ", category: kitchen)
       miss = create(:item, name: "シャンプー", category: bath)
 
-      get items_path, params: { category_id: kitchen.id }
+      get items_path, params: { category_id: kitchen.to_param }
 
       # カテゴリ名は絞り込みセレクトの option にも出るので、必ず品目名で確かめる
       expect(rendered_list("品目一覧")).to include hit.name
@@ -104,7 +104,7 @@ RSpec.describe "品目", type: :request do
       hit = create(:item, name: "パスタ", storage_location: pantry)
       miss = create(:item, name: "歯ブラシ", storage_location: washroom)
 
-      get items_path, params: { storage_location_id: pantry.id }
+      get items_path, params: { storage_location_id: pantry.to_param }
 
       expect(rendered_list("品目一覧")).to include hit.name
       expect(rendered_list("品目一覧")).not_to include miss.name
@@ -137,7 +137,7 @@ RSpec.describe "品目", type: :request do
       same_name_other_category = create(:item, name: "キッチンタイマー", category: bath)
       same_category_other_name = create(:item, name: "ラップ", category: kitchen)
 
-      get items_path, params: { q: "キッチン", category_id: kitchen.id }
+      get items_path, params: { q: "キッチン", category_id: kitchen.to_param }
 
       expect(rendered_list("品目一覧")).to include hit.name
       expect(rendered_list("品目一覧")).not_to include same_name_other_category.name
@@ -164,7 +164,7 @@ RSpec.describe "品目", type: :request do
       expect(rendered_list("品目一覧")).to include item.name
     end
 
-    it "数字でないカテゴリ id は無視される" do
+    it "Base58 として読めないカテゴリ id は無視される" do
       item = create(:item, name: "ティッシュ", category: create(:category))
 
       get items_path, params: { category_id: "abc" }
@@ -176,7 +176,7 @@ RSpec.describe "品目", type: :request do
     it "存在しないカテゴリ id を指定したときは 0 件になる (絞り込みは効いている)" do
       create(:item, name: "ティッシュ", category: create(:category))
 
-      get items_path, params: { category_id: Category.maximum(:id) + 1 }
+      get items_path, params: { category_id: nonexistent_param }
 
       expect(rendered_list("品目一覧")).not_to include "ティッシュ"
     end

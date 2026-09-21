@@ -1,13 +1,13 @@
 class CreateStockTakeEntries < ActiveRecord::Migration[8.1]
   def change
-    create_table :stock_take_entries do |t|
+    create_table :stock_take_entries, id: :uuid, default: -> { "uuidv7()" } do |t|
       # 棚卸明細 (docs/spec/01-domain-model.md 判断 3)。
       # 既定は品目ごとに「実数の合計」を 1 行。tracks_expiry でロットが 2 件以上ある品目だけ、
       # ロット別に数えた行 (lot_id あり) を作れる
-      t.references :stock_take, null: false, foreign_key: true, index: false
-      t.references :item, null: false, foreign_key: true, index: false
+      t.references :stock_take, type: :uuid, null: false, foreign_key: true, index: false
+      t.references :item, type: :uuid, null: false, foreign_key: true, index: false
       # ロット別に数えた場合のみ。外部キーは (lot_id, item_id) の複合で張る (下の add_foreign_key)
-      t.bigint :lot_id
+      t.uuid :lot_id
       t.integer :expected_quantity, null: false, default: 0   # 確定時点の記録在庫
       # 実数。NULL = 未入力で、確定のときスキップする
       # (docs/spec/03-screens.md 画面 6「未入力はスキップ」)
