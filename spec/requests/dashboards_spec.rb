@@ -126,6 +126,31 @@ RSpec.describe "ダッシュボード", type: :request do
       expect(rendered_list("クイック使用の品目")).not_to include "ぼうさいようひん"
     end
 
+    # タイルは縦並びの flex。リンク (用途つき) はタイルの子なので勝手に伸びるが、
+    # button_to は form が子になり、中のボタンは自然な幅のまま左に寄ってしまう。
+    # どちらもタイルの幅いっぱいにそろえる
+    it "「使った」はボタンでもリンクでもタイルの幅いっぱいに広がる" do
+      plain = create(:item, :favorite, name: "トイレットペーパー")
+      with_purposes = create(:item, :favorite, name: "単 3 電池", tracks_purposes: true)
+
+      get root_path
+
+      button = response.parsed_body.at("form[action='#{item_quick_use_path(plain)}'] button")
+      link = response.parsed_body.at("a[href='#{new_item_usage_record_path(with_purposes)}']")
+      expect(button["class"].split).to include "w-full"
+      expect(link["class"].split).to include "w-full"
+    end
+
+    # 一覧の行では「使った」は右端の小さなボタンのまま (幅いっぱいにしない)
+    it "品目一覧の「使った」は幅いっぱいにしない" do
+      plain = create(:item, name: "トイレットペーパー")
+
+      get items_path
+
+      button = response.parsed_body.at("form[action='#{item_quick_use_path(plain)}'] button")
+      expect(button["class"].split).not_to include "w-full"
+    end
+
     # ワンタップだと用途が付かないので、用途を管理する品目はフォームへ送る
     it "用途を管理する品目は用途を選べるフォームへのリンクになる" do
       item = create(:item, :favorite, name: "単 3 電池", tracks_purposes: true)

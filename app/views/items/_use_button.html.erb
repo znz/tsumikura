@@ -1,18 +1,21 @@
-<%# locals: (item:, from: nil) %>
+<%# locals: (item:, from: nil, full: false) %>
 <%#
   「使った」ボタン (docs/spec/03-screens.md 画面 2 / 4b)。
   用途を管理する品目はワンタップだと用途が付かないので、用途を選べるフォームへ誘導する。
   それ以外はワンタップで即記録し、取り消せるトーストを出す。
   from は「どの画面から押したか」。ダッシュボードからのときだけ、Turbo Stream の応答に
   アラートカードと最近の記録も足す (タイルのバッジだけ変わって件数が古いままにならないように)。
+  full は、置いた枠の幅いっぱいに広げるか (ダッシュボードのタイル)。button_to は form が外側に付き、
+  中のボタンは自然な幅のままなので、リンクと見た目をそろえるにはボタン自身に w-full が要る。
 %>
+<% width = full ? "w-full" : nil %>
 <%# アーカイブ済みの品目は日々使う導線から外す (記録自体はサーバが受け付ける) %>
 <% if item.archived? %>
 <% elsif item.tracks_purposes? %>
   <%= link_to "使った", new_item_usage_record_path(item),
-        aria: { label: "「#{item.name}」を使った" }, class: use_button_classes %>
+        aria: { label: "「#{item.name}」を使った" }, class: use_button_classes(width) %>
 <% else %>
   <%= button_to "使った", item_quick_use_path(item), form: { class: "shrink-0" },
         params: (from.present? ? { from: from } : {}),
-        aria: { label: "「#{item.name}」を使った" }, class: use_button_classes %>
+        aria: { label: "「#{item.name}」を使った" }, class: use_button_classes(width) %>
 <% end %>
