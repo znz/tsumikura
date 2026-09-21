@@ -290,6 +290,41 @@ Phase 13 のあと、アプリの全テーブルの主キーを連番の bigint 
 > `git push` は `Everything up-to-date` になって何も起きないので、代わりに
 > `dokku ps:rebuild tsumikura` で predeploy からやり直す。
 
+### 方法 A (推奨): DB サービスは残し、中身だけ空にする
+
+DB サービス・link・`DATABASE_URL`・バックアップのスケジュールをそのまま残せる。
+`public` スキーマを空にすると、predeploy の `db:prepare` が空の DB とみなして `db/schema.rb` を読み込む
+(開発環境で、bigint の古いスキーマを入れた DB に対して確認済み: 空にする前の `db:prepare` は何もせず
+bigint のまま、空にした後の `db:prepare` で uuid 16 テーブル + Solid の bigint 14 テーブルになる)。
+
+```bash
+# 1. 念のため今の中身を退避する (bigint のままのダンプ。新スキーマには読み込めない)
+dokku postgres:export tsumikura-db > tsumikura-$(date +%Y%m%d).dump
+
+# 2. アプリを止める (古いコードが空の DB に触らないように)
+dokku ps:stop tsumikura
+
+# 3. public スキーマを空にする (全テーブルが消える)
+echo 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' | dokku postgres:connect tsumikura-db
+
+# 4. 再デプロイ。predeploy (db:prepare) が db/schema.rb を読み込む
+git push dokku <ブランチ>:main
+# すでに push 済みで Everything up-to-date になるときは、代わりにこれ
+# dokku ps:rebuild tsumikura
+
+# 5. 最初の管理者を作り直す
+dokku run tsumikura bin/rails tsumikura:create_admin \
+  ADMIN_EMAIL=admin@example.com ADMIN_NAME=かんりしゃ
+```
+
+- `dokku postgres:connect` に標準入力で SQL を渡せない環境では、`dokku postgres:connect tsumikura-db` で
+  psql に入ってから同じ SQL を実行する。
+- この方法ではバックアップのスケジュールの再設定は要らない (下の表の該当行は方法 B の場合)。
+
+### 方法 B: DB サービスごと作り直す
+
+PostgreSQL のメジャーバージョンも変えたいとき (17 以前で作られていたとき) はこちら。
+
 ```bash
 # 1. 念のため今の中身を退避する (bigint のままのダンプ。新スキーマには読み込めない)
 dokku postgres:export tsumikura-db > tsumikura-$(date +%Y%m%d).dump
