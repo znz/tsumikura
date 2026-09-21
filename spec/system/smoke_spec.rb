@@ -21,7 +21,7 @@ RSpec.describe "トップページ", type: :system do
   it "誤ったパスワードではログインできない" do
     user = create(:user)
 
-    sign_in_as user, password: "wrong-password"
+    sign_in_as user, password: "wrong-password", wait_for_login: false
 
     expect(page).to have_current_path(new_session_path)
     expect(page).to have_text("メールアドレスまたはパスワードが違います。")

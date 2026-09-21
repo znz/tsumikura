@@ -145,7 +145,7 @@ RSpec.describe "購入の記録", type: :system do
 
       choose "直接入力"
 
-      expect(page).to have_no_field("入数")
+      expect(page).to have_no_field("入数", exact: true)
       fill_in "数量", with: "5"
       click_button "記録する"
 
@@ -160,7 +160,7 @@ RSpec.describe "購入の記録", type: :system do
       choose "直接入力"
       choose "入数 × パック数"
 
-      expect(page).to have_no_field("数量")
+      expect(page).to have_no_field("数量", exact: true)
       fill_in "入数", with: "12"
       fill_in "パック数", with: "2"
       click_button "記録する"

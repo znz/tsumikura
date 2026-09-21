@@ -476,4 +476,23 @@ RSpec.describe "使用の記録", type: :request do
       expect(response.body).to include "すでに取り消されています"
     end
   end
+
+  # 「今日」「昨日」の日付はサーバ (Asia/Tokyo) で決めてボタンに埋める。ブラウザの時計で計算すると、
+  # 端末のタイムゾーンが違うときに 1 日ずれる (CI のブラウザは UTC)
+  describe "使用日のショートカット" do
+    it "UTC ではまだ前日の時刻でも、日本時間の今日と昨日がボタンに入る" do
+      item = create(:item)
+      sign_in create(:user)
+
+      # 日本時間 01:00 = UTC では前日の 16:00
+      travel_to Time.current.change(hour: 1, min: 0) do
+        get new_item_usage_record_path(item)
+
+        dates = response.parsed_body.css("button[data-action='date-shortcut#select']")
+                        .to_h { |button| [ button.text.strip, button["data-date-shortcut-date-param"] ] }
+        expect(dates).to eq("今日" => Date.current.iso8601, "昨日" => (Date.current - 1).iso8601)
+        expect(Date.current).not_to eq Time.now.utc.to_date
+      end
+    end
+  end
 end

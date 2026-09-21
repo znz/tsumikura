@@ -66,9 +66,11 @@
   <div data-controller="date-shortcut">
     <%= form.label :used_on, class: label_classes %>
     <div class="mt-2 flex gap-2" data-date-shortcut-target="control" hidden>
+      <%# 日付はサーバ (Asia/Tokyo) で決める。ブラウザの時計で計算すると、端末のタイムゾーンが
+          違うときに 1 日ずれる (CI のブラウザは UTC) %>
       <% { "今日" => 0, "昨日" => 1 }.each do |label, days_ago| %>
         <button type="button" data-action="date-shortcut#select"
-                data-date-shortcut-days-ago-param="<%= days_ago %>"
+                data-date-shortcut-date-param="<%= (Date.current - days_ago).iso8601 %>"
                 class="min-h-11 flex-1 cursor-pointer rounded-lg border border-slate-300 px-4 text-sm text-slate-700"><%= label %></button>
       <% end %>
     </div>

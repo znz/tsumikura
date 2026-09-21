@@ -16,13 +16,18 @@ end
 
 # system spec 用
 module SystemAuthenticationHelper
-  def sign_in_as(user, password: AuthenticationHelper::DEFAULT_PASSWORD)
+  def sign_in_as(user, password: AuthenticationHelper::DEFAULT_PASSWORD, wait_for_login: true)
     visit new_session_path
     fill_in "メールアドレス", with: user.email_address
     fill_in "パスワード", with: password
     # 実ブラウザ (js: true) ではログイン画面に「パスキーでログイン」ボタンも出る。
     # Capybara の既定は部分一致なので、exact: true でパスワードの送信ボタンだけを押す
     click_button "ログイン", exact: true
+    # 実ブラウザの click は送信の完了を待たずに返る。このあとすぐ visit すると、ログインの
+    # POST が終わる前に遷移してしまい、未ログインのままログイン画面へ戻される。
+    # ログイン後のレイアウト (下部タブ) が出るまで待つ (rack_test では即座に真)。
+    # ログインの失敗を確かめる spec は wait_for_login: false で呼ぶ
+    expect(page).to have_css("nav[aria-label='グローバルナビ']") if wait_for_login
   end
 end
 

@@ -13,15 +13,10 @@ export default class extends Controller {
     })
   }
 
-  // data-date-shortcut-days-ago-param で「何日前か」を受け取る
+  // data-date-shortcut-date-param で日付を受け取る。
+  // 日付 (YYYY-MM-DD) はサーバがボタンに埋めてある。ブラウザの時計では計算しない
+  // (端末のタイムゾーンがアプリの Asia/Tokyo と違うと 1 日ずれるため)
   select(event) {
-    const date = new Date()
-    date.setDate(date.getDate() - Number(event.params.daysAgo))
-
-    this.inputTarget.value = [
-      date.getFullYear(),
-      String(date.getMonth() + 1).padStart(2, "0"),
-      String(date.getDate()).padStart(2, "0")
-    ].join("-")
+    this.inputTarget.value = event.params.date
   }
 }
