@@ -47,7 +47,7 @@ gem "webauthn"
 # json 3 は JSON.parse のオプションをキーワード引数でしか受けず、ハッシュを位置引数で渡す
 # ActiveSupport 8.1.3 の JSON.decode (署名付き Cookie / セッションの読み出し) が ArgumentError になる。
 # Rails 側が対応したら外す
-gem "json", "< 3"
+gem "json", "< 4"
 
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 gem "image_processing", "~> 1.2"
