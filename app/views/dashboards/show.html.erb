@@ -2,7 +2,7 @@
 
 <div class="flex items-baseline justify-between gap-2">
   <h1 class="text-2xl font-bold text-slate-900">つみくら</h1>
-  <p class="text-sm text-slate-500">ようこそ、<%= Current.user.name %>。</p>
+  <p class="text-sm text-slate-500">ようこそ、<%= name_with_san(Current.user.name) %>。</p>
 </div>
 
 <%# (1) アラートカード 4 種 %>

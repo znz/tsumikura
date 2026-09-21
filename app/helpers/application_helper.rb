@@ -1,4 +1,13 @@
 module ApplicationHelper
+  # 表示名に付ける敬称。家族の表示名は「おかあさん」のように敬称込みで登録されることが多いので、
+  # すでに敬称で終わっているときは重ねない (「おかあさんさん」にしない)
+  NAME_HONORIFICS = %w[ さん ちゃん くん さま 様 ].freeze
+
+  def name_with_san(name)
+    name = name.to_s.strip
+    name.end_with?(*NAME_HONORIFICS) ? name : "#{name}さん"
+  end
+
   # URL に出す id (Base58 の 22 文字)。レコードそのものがあれば to_param を使えばよいが、
   # id しか手元にないとき (関連を読み込まずに済ませたいとき) に使う。
   # **URL に出るのはここを通した値だけ**で、POST の本文に入る id は UUID のまま

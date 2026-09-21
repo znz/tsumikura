@@ -9,13 +9,13 @@ RSpec.describe "トップページ", type: :system do
   end
 
   it "ログインするとダッシュボードが表示される" do
-    user = create(:user, name: "おかあさん")
+    user = create(:user, name: "はなこ")
 
     sign_in_as user
 
     expect(page).to have_current_path(root_path)
     expect(page).to have_css("h1", text: "つみくら")
-    expect(page).to have_text("ようこそ、おかあさん。")
+    expect(page).to have_text("ようこそ、はなこさん。")
   end
 
   it "誤ったパスワードではログインできない" do
