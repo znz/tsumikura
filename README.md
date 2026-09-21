@@ -40,3 +40,7 @@ mise x -- bin/rspec                  # テスト
 ```
 
 `compose.yaml` と `mise.toml` は Phase 1 で追加済み。詳細は [開発環境](docs/ops/development.md) を参照。
+
+## ライセンス
+
+[MIT License](LICENSE)
