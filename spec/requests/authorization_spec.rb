@@ -12,6 +12,7 @@ authenticated_actions = [
   [ "品目の更新", :patch, -> { item_path(item) }, -> { { item: { name: "のっとり", unit: "個" } } } ],
   [ "品目のアーカイブ", :post, -> { item_archive_path(item) }, -> { {} } ],
   [ "品目の復元", :delete, -> { item_archive_path(item) }, -> { {} } ],
+  [ "品目の記録の全履歴", :get, -> { item_records_path(item) }, -> { {} } ],
 
   [ "使用の入力フォーム", :get, -> { new_item_usage_record_path(item) }, -> { {} } ],
   [ "使用の記録", :post, -> { item_usage_records_path(item) },
@@ -152,7 +153,7 @@ RSpec.describe "品目とマスタの認可", type: :request do
   # 突き合わせるので、アクションを足して表に足し忘れるとここが落ちる
   it "表は品目・記録・マスタの全ルートを網羅している" do
     target_controllers = %w[
-      items items/archives items/quick_uses
+      items items/archives items/quick_uses items/records
       usage_records lots disposals
       stock_takes stock_takes/finalizations
       shopping_lists shopping_list_items purchases

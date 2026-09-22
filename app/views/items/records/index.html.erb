@@ -1,0 +1,27 @@
+<%#
+  品目の記録の全履歴 (docs/spec/03-screens.md 画面 3b)。
+  行は品目詳細の「最近の記録」と同じ部分テンプレート (items/_recent_record) を使い回すので、
+  編集・削除・取り消しの導線もそのまま出る。
+%>
+<% content_for :title, "#{@item.name} の記録" %>
+
+<p class="text-sm">
+  <%= link_to "← 品目詳細", item_path(@item), class: "text-blue-600 underline" %>
+</p>
+
+<h1 class="mt-2 text-2xl font-bold text-slate-900"><%= @item.name %> の記録</h1>
+<p class="<%= hint_classes %>">使用・購入・廃棄・棚卸の調整を新しい順に並べています。</p>
+
+<% if @records.empty? %>
+  <p class="mt-6 rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-600">
+    まだ記録がありません。
+  </p>
+<% else %>
+  <div class="mt-6 rounded-xl border border-slate-200 bg-white px-4">
+    <ul class="divide-y divide-slate-200" aria-label="記録一覧">
+      <% @records.each do |record| %>
+        <%= render "items/recent_record", record: record, item: @item %>
+      <% end %>
+    </ul>
+  </div>
+<% end %>

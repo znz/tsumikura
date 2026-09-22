@@ -827,6 +827,26 @@ RSpec.describe "品目", type: :request do
           .to include "まだ記録がありません"
       end
 
+      # 総件数を数えずに済ませるため、10 件 + 1 件だけ引いて「余ったか」で出し分ける
+      it "10 件を超えると全履歴への「もっと見る」が出る" do
+        record_usages(item, interval: 1, times: 11)
+
+        get item_path(item)
+
+        expect(rendered_list("最近の記録一覧").scan("使った").size).to eq 10
+        expect(response.parsed_body.at("section[aria-label='最近の記録'] a[href='#{item_records_path(item)}']"))
+          .to be_present
+      end
+
+      it "10 件までなら「もっと見る」は出さない" do
+        record_usages(item, interval: 1, times: 10)
+
+        get item_path(item)
+
+        expect(rendered_list("最近の記録一覧").scan("使った").size).to eq 10
+        expect(response.parsed_body.at("a[href='#{item_records_path(item)}']")).to be_nil
+      end
+
       # 行ごとに用途と店舗を出すので、includes しないと記録の数だけクエリが増える
       it "記録が増えてもクエリ数は増えない (用途と店舗を includes)" do
         purposes_item = create(:item, tracks_purposes: true)

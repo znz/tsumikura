@@ -201,5 +201,15 @@
         <%= render "items/recent_record", record: record, item: @item %>
       <% end %>
     </ul>
+
+    <%#
+      11 件目が引けたときだけ全履歴への導線を出す (画面 3b)。
+      文言に総件数は入れない (数えるための COUNT を毎回足すことになるため)
+    %>
+    <% if @recent_records_truncated %>
+      <p class="mt-3 border-t border-slate-200 pt-3 text-sm">
+        <%= link_to "もっと見る", item_records_path(@item), class: "text-blue-600 underline" %>
+      </p>
+    <% end %>
   <% end %>
 </section>

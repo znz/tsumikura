@@ -29,6 +29,10 @@ Rails.application.routes.draw do
     resources :usage_records, only: %i[ new create ]
     resources :lots, only: %i[ new create ]
     resources :disposals, only: %i[ new create ]
+    # 品目詳細の「最近の記録」(10 件) の続きを見る全履歴 (docs/spec/03-screens.md 画面 3b)。
+    # 記録は 3 つのテーブル (使用・ロット・movement) に分かれていて 1 レコードを指せないので
+    # index だけを置く
+    resources :records, only: :index, module: :items
     # 用途マスタは品目詳細配下 (docs/spec/03-screens.md 画面 9b)。
     # as: :purposes で item_purposes_path(item) / edit_item_purpose_path(item, purpose) になる
     resources :item_purposes, path: "purposes", as: :purposes, except: :show do

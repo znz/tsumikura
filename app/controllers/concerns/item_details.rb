@@ -7,7 +7,7 @@ module ItemDetails
   # 使い切ったロットは畳んで表示するので、一覧に出すのは直近の分だけにする
   # (何年も使っている品目で行が無限に伸びないように)
   DEPLETED_LOTS_LIMIT = 20
-  # 「最近の記録」に出す使用・購入の件数
+  # 「最近の記録」に出す件数。これを超えたら全履歴 (Items::RecordsController) へ誘導する
   RECENT_RECORDS_LIMIT = 10
 
   private
@@ -23,7 +23,7 @@ module ItemDetails
       @expiry = Expiry::Evaluator.for(@item, today: @today)
       load_lots
       load_purposes
-      @recent_records = recent_records
+      load_recent_records
     end
 
     # ロット一覧は期限が近い順 (FEFO)。store を includes しないと行ごとに店舗を引いてしまう
@@ -42,25 +42,14 @@ module ItemDetails
       @purposes = @item.tracks_purposes? ? @item.item_purposes.active.includes(:usage_records).to_a : []
     end
 
-    # 使用・購入・廃棄・棚卸の調整を時系列で混ぜる。
-    # 在庫不足の補填で作られた調整ロットと movement はユーザーの操作ではないので出さない
-    # (補填したことはトーストで伝えている)。
-    # 行ごとに用途・店舗・棚卸を出すので、includes しないと記録の数だけクエリが増える
-    def recent_records
-      usages = @item.usage_records.includes(:item_purpose).recent_first.limit(RECENT_RECORDS_LIMIT).to_a
-      purchases = @item.lots.recordable.includes(:store).recent_first.limit(RECENT_RECORDS_LIMIT).to_a
-
-      (usages + purchases + recent_movements)
-        .sort_by { |record| [ record.recorded_on, record.created_at ] }
-        .reverse
-        .take(RECENT_RECORDS_LIMIT)
-    end
-
-    # 廃棄と、棚卸の確定で入った調整 (明細に紐づく行だけ)
-    def recent_movements
-      @item.stock_movements.kind_disposal
-        .or(@item.stock_movements.recorded_adjustments)
-        .includes(:stock_take_entry)
-        .recent_first.limit(RECENT_RECORDS_LIMIT).to_a
+    # 使用・購入・廃棄・棚卸の調整の時系列は全履歴 (Items::RecordsController) と共有する
+    # (Stock::RecordHistory)。
+    # 「もっと見る」の判定のために **1 件多く**引く。総件数の COUNT を足すより、
+    # 各テーブルから 1 行多く読むほうが安い (クエリの本数は変わらない)
+    def load_recent_records
+      records = Stock::RecordHistory.call(@item, limit: RECENT_RECORDS_LIMIT + 1)
+      @recent_records = records.take(RECENT_RECORDS_LIMIT)
+      # 11 件目が引けたときだけ全履歴への導線を出す (件数は出さない)
+      @recent_records_truncated = records.size > RECENT_RECORDS_LIMIT
     end
 end

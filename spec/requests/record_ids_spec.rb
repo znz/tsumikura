@@ -96,6 +96,7 @@ RSpec.describe "URL の id", type: :request do
   resources = [
     [ "品目", ->(id) { get item_path(id) }, -> { create(:item) } ],
     [ "品目の編集", ->(id) { get edit_item_path(id) }, -> { create(:item) } ],
+    [ "記録の全履歴 (品目 id)", ->(id) { get item_records_path(item_id: id) }, -> { create(:item) } ],
     [ "用途一覧 (品目 id)", ->(id) { get item_purposes_path(item_id: id) }, -> { create(:item) } ],
     [ "使用の入力 (品目 id)", ->(id) { get new_item_usage_record_path(item_id: id) }, -> { create(:item) } ],
     [ "購入の入力 (品目 id)", ->(id) { get new_item_lot_path(item_id: id) }, -> { create(:item) } ],
