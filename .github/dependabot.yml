@@ -6,7 +6,7 @@ updates:
     prefix: "build"
     include: "scope"
   schedule:
-    interval: weekly
+    interval: daily
   open-pull-requests-limit: 10
   ignore:
   # json 3 は JSON.parse のオプションをキーワード引数でしか受けず、ActiveSupport 8.1.3 の
@@ -24,7 +24,7 @@ updates:
     prefix: "ci"
     include: "scope"
   schedule:
-    interval: weekly
+    interval: daily
   open-pull-requests-limit: 10
 - package-ecosystem: docker-compose
   directories:
@@ -33,5 +33,5 @@ updates:
     prefix: "build"
     include: "scope"
   schedule:
-    interval: weekly
+    interval: daily
   open-pull-requests-limit: 10
