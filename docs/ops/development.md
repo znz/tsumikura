@@ -6,7 +6,7 @@
 
 | 項目 | 値 |
 |---|---|
-| Ruby | 4.0.7 (`.ruby-version`) |
+| Ruby | 4.0.10 (`.ruby-version`) |
 | Rails | 8.1.x |
 | DB | PostgreSQL (Docker Compose で起動) |
 | アセット | Propshaft + importmap + Tailwind CSS (tailwindcss-rails) |
@@ -15,15 +15,15 @@
 
 ## 2. mise
 
-グローバルの mise 設定が ruby 4.0.1 を固定しており、`.ruby-version` (4.0.7) が尊重されない。プロジェクトルートに `mise.toml` を置いて解決する。
+グローバルの mise 設定が ruby 4.0.1 を固定しており、`.ruby-version` (4.0.10) が尊重されない。プロジェクトルートに `mise.toml` を置いて解決する。
 
 ```toml
 # mise.toml
 [tools]
-ruby = "4.0.7"
+ruby = "4.0.10"
 ```
 
-- これで `mise x -- bin/rails ...` が 4.0.7 で動く。初回は `mise trust` が必要な場合がある。
+- これで `mise x -- bin/rails ...` が 4.0.10 で動く。初回は `mise trust` が必要な場合がある。
 - `mise trust` が使えない環境 (CI やサンドボックスなど) では、`MISE_TRUSTED_CONFIG_PATHS` 環境変数にプロジェクトのパスを設定して代替する。
 - 代替案としてグローバル設定に `mise settings set idiomatic_version_file_enable_tools ruby` を入れる方法もあるが、プロジェクト完結の `mise.toml` を採る。
 
