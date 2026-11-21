@@ -31,6 +31,22 @@ RSpec.describe "購入の記録", type: :system do
       end
     end
 
+    # 金額の自動入力は Stimulus が行うが、JS が無くてもサーバ側で計算して記録する
+    it "税別の単価・個数・税率を入れると、税込合計が金額として記録される" do
+      sign_in_as user
+
+      visit new_item_lot_path(item)
+      find("summary", text: "税別の単価から計算する").click
+      fill_in "税別単価", with: "198"
+      fill_in "個数", with: "2"
+      choose "8%"
+      click_button "記録する"
+
+      expect(page).to have_text "記録しました"
+      # 198 × 2 × 1.08 = 427.68 → 427
+      expect(Lot.order(:id).last.price_yen).to eq 427
+    end
+
     # 切り替えボタンは Stimulus が付いたときだけ出す。JS が無いときは
     # 入数・パック数・数量をすべて出し、サーバ側で数量を決める
     it "切り替えボタンは出ず、数量の入力欄が 3 つとも出ている" do
@@ -167,6 +183,45 @@ RSpec.describe "購入の記録", type: :system do
 
       expect(page).to have_text "記録しました"
       expect(item.reload.current_quantity).to eq 24
+    end
+
+    # 税別の 3 項目がそろったら、送信前に金額 (税込) の欄を埋めて見せる
+    it "税別の単価・個数・税率を入れると金額 (税込) の欄が埋まり、そのまま記録できる" do
+      sign_in_as user
+
+      visit new_item_lot_path(item)
+      find("summary", text: "税別の単価から計算する").click
+      fill_in "税別単価", with: "198"
+      fill_in "個数", with: "2"
+      choose "8%"
+
+      expect(page).to have_field("金額 (税込)", with: "427", exact: true)
+
+      click_button "記録する"
+
+      expect(page).to have_text "記録しました"
+      expect(Lot.order(:id).last.price_yen).to eq 427
+    end
+
+    it "3 項目が欠けると自分で埋めた金額は消すが、手で直した金額は消さない" do
+      sign_in_as user
+
+      visit new_item_lot_path(item)
+      find("summary", text: "税別の単価から計算する").click
+      fill_in "税別単価", with: "100"
+      fill_in "個数", with: "1"
+      choose "10%"
+      expect(page).to have_field("金額 (税込)", with: "110", exact: true)
+
+      fill_in "個数", with: ""
+      expect(page).to have_field("金額 (税込)", with: "", exact: true)
+
+      fill_in "個数", with: "1"
+      expect(page).to have_field("金額 (税込)", with: "110", exact: true)
+      # レシート全体の端数処理と 1 円ずれたので手で直した
+      fill_in "金額 (税込)", with: "111"
+      fill_in "個数", with: ""
+      expect(page).to have_field("金額 (税込)", with: "111", exact: true)
     end
   end
 end

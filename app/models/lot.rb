@@ -19,6 +19,25 @@ class Lot < ApplicationRecord
   # 単価がこの金額より安いと四捨五入で 0 円になってしまうので、小数 1 桁まで出す
   UNIT_PRICE_DECIMAL_THRESHOLD = 10
 
+  # 税別の単価から税込合計を計算する入力補助で選べる税率 (%)。軽減税率と標準税率
+  TAX_RATE_PERCENTS = [ 8, 10 ].freeze
+  # 入力補助の 3 項目と、それぞれに許す値 (docs/spec/01-domain-model.md 判断 6)
+  EX_TAX_PRICE_INPUTS = {
+    ex_tax_unit_price_yen: 0..MAX_PRICE_YEN,
+    ex_tax_count: 1..MAX_QUANTITY,
+    tax_rate_percent: TAX_RATE_PERCENTS
+  }.freeze
+  EX_TAX_INTEGER_FORMAT = /\A[+-]?\d+\z/
+
+  # レシートに税別の単価・個数・税率しか載っていないときの入力補助。DB には保存せず、
+  # 金額 (税込) が空のときだけ、保存する直前にここから計算した税込合計を price_yen に入れる
+  # (apply_ex_tax_price)。
+  # 型は付けず、送られた値をそのまま持つ。integer 型にすると "abc" が 0 に化けるうえ、
+  # 4 バイト整数をはみ出す値が保存後の後片づけ (changes_applied) で ActiveModel::RangeError になる
+  attribute :ex_tax_unit_price_yen
+  attribute :ex_tax_count
+  attribute :tax_rate_percent
+
   belongs_to :item
   belongs_to :store, optional: true
   belongs_to :user                       # 記録者
@@ -56,6 +75,7 @@ class Lot < ApplicationRecord
 
   before_validation :apply_pack_quantity
   before_save :clear_unused_pack_input
+  before_save :apply_ex_tax_price
   # prepend は必須。has_many :stock_movements, dependent: :destroy が先に宣言されているので、
   # 付けないと movement が消えたあとにガードが走り「消費なし」と判定してしまう
   before_destroy :ensure_not_consumed, prepend: true
@@ -83,6 +103,7 @@ class Lot < ApplicationRecord
 
   validate :acquired_on_cannot_be_in_the_future
   validate :initial_quantity_must_cover_consumption, on: :update
+  validate :ex_tax_price_input_must_be_complete
 
   # 「最近の単価」は、価格のある直近 RECENT_PRICED_LOTS 件の総額 ÷ 総数量
   # (調整ロットの価格 NULL で歪まないように価格のあるロットだけを見る。
@@ -173,6 +194,79 @@ class Lot < ApplicationRecord
       return false if pack_size.blank? || pack_count.blank?
 
       new_record? || pack_size_changed? || pack_count_changed? || !initial_quantity_changed?
+    end
+
+    # 保存する直前に、金額 (税込) が空なら 3 項目から計算して入れる。
+    # 検証の段階では埋めない。埋めると、ほかの項目のエラーで描き直したときに金額の欄に
+    # 計算結果が入り、3 項目を直して送り直しても古い金額のほうが勝ってしまう。
+    # 3 項目は保存のたびに捨てる (残すと、あとで金額を空にしただけで古い入力から計算し直すため)
+    def apply_ex_tax_price
+      total = ex_tax_price_total if ex_tax_price_input?
+      self.price_yen = total if total
+
+      EX_TAX_PRICE_INPUTS.each_key { |attribute| self[attribute] = nil }
+    end
+
+    # 一部だけ入っている・値が不正なまま、黙って金額なしで記録しない。
+    # 金額は保存の直前まで埋めないので、計算結果の上限もここで見る
+    def ex_tax_price_input_must_be_complete
+      return unless ex_tax_price_input?
+
+      EX_TAX_PRICE_INPUTS.each_key do |attribute|
+        type, options = ex_tax_input_error(attribute)
+        errors.add(attribute, type, **options) if type
+      end
+      return if errors.attribute_names.intersect?(EX_TAX_PRICE_INPUTS.keys)
+
+      total = ex_tax_price_total
+      return if total <= MAX_PRICE_YEN
+
+      errors.add(:ex_tax_unit_price_yen, :total_too_large,
+        max: ActiveSupport::NumberHelper.number_to_delimited(MAX_PRICE_YEN))
+    end
+
+    # 金額 (税込) が直接入っていればそちらが勝ち、3 項目は見ない (検証もしない)
+    def ex_tax_price_input?
+      price_yen_before_type_cast.blank? &&
+        EX_TAX_PRICE_INPUTS.keys.any? { |attribute| ex_tax_raw_input(attribute).present? }
+    end
+
+    # 税別単価 × 個数 × (100 + 税率) / 100 の 1 円未満を切り捨てた金額 (税込)。
+    # 浮動小数の誤差 (100 × 1.1 = 110.00000000000001) が出ないよう整数で計算する。
+    # 3 項目のどれかが欠けている・不正なときは nil
+    def ex_tax_price_total
+      unit, count, rate = EX_TAX_PRICE_INPUTS.keys.map { |attribute| ex_tax_input_value(attribute) }
+      return nil if [ unit, count, rate ].any?(&:nil?)
+
+      (unit * count * (100 + rate)).div(100)
+    end
+
+    # 妥当な値なら Integer、そうでなければ nil
+    def ex_tax_input_value(attribute)
+      ex_tax_raw_input(attribute).to_i unless ex_tax_input_error(attribute)
+    end
+
+    # [エラーの種類, errors.add のオプション] か nil。
+    # 巨大な数でも例外にならないよう、文字列を Integer (Bignum) にしてから範囲を見る。
+    # 配列やハッシュが届いても文字列にすれば整数の形にならないので、検証エラーになる
+    def ex_tax_input_error(attribute)
+      raw = ex_tax_raw_input(attribute)
+      allowed = EX_TAX_PRICE_INPUTS.fetch(attribute)
+
+      return [ :blank, {} ] if raw.blank?
+      return [ :not_an_integer, {} ] unless EX_TAX_INTEGER_FORMAT.match?(raw)
+      return nil if allowed.include?(raw.to_i)
+      return [ :inclusion, {} ] unless allowed.is_a?(Range)
+
+      if raw.to_i < allowed.min
+        [ :greater_than_or_equal_to, { count: allowed.min } ]
+      else
+        [ :less_than_or_equal_to, { count: allowed.max } ]
+      end
+    end
+
+    def ex_tax_raw_input(attribute)
+      self[attribute].to_s.strip
     end
 
     # 消費イベントが必ず今日以前にあることを予測が前提にしている

@@ -58,6 +58,26 @@ RSpec.describe "買い物リスト", type: :system do
     expect(page).to have_no_css("ul[aria-label='要購入の品目']")
   end
 
+  it "まとめ購入でも、税別の単価・個数・税率から金額を記録できる (JS 無し)" do
+    item = urgent_item(name: "ティッシュ")
+    sign_in_as user
+
+    visit shopping_list_path
+    click_button "「ティッシュ」をチェックする"
+
+    click_link "チェック済み 1 件を購入として記録"
+    fill_in "数量 (個)", with: "10"
+    find("summary", text: "税別の単価から計算する").click
+    fill_in "税別単価", with: "98"
+    fill_in "個数", with: "3"
+    choose "10%"
+    click_button "購入を記録"
+
+    expect(page).to have_text "1 件の購入を記録しました"
+    # 98 × 3 × 1.10 = 323.4 → 323
+    expect(item.reload.lots.order(:id).last.price_yen).to eq 323
+  end
+
   it "自由入力で買い物リストに書き足し、あとで消せる" do
     sign_in_as user
 

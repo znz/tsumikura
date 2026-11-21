@@ -66,6 +66,21 @@ RSpec.describe "購入の記録", type: :request do
       end
     end
 
+    # レシートに税別の単価しか載っていないときの入力補助 (docs/spec/03-screens.md 画面 5)
+    it "税別の単価・個数・税率の入力欄が、閉じた <details> の中に出ている" do
+      get new_item_lot_path(item)
+
+      details = response.parsed_body.at("details:has(input[name='lot[ex_tax_unit_price_yen]'])")
+      expect(details).to be_present
+      expect(details[:open]).to be_nil
+      expect(details.at("summary").text).to include "税別の単価から計算する"
+      expect(details.at("input[type='number'][name='lot[ex_tax_count]']")).to be_present
+      # 税率は未選択で始める (うっかり既定の税率で計算しないように)
+      radios = details.css("input[type='radio'][name='lot[tax_rate_percent]']")
+      expect(radios.map { |radio| radio[:value] }).to eq %w[ 8 10 ]
+      expect(radios.none? { |radio| radio[:checked] }).to be true
+    end
+
     # URL の id は Base58 の 22 文字。読めない値・存在しない値・生の UUID のどれも 404
     it "引けない品目 id は 404" do
       [ 0, malformed_param, nonexistent_param, create(:item).id ].each do |item_id|
@@ -135,6 +150,93 @@ RSpec.describe "購入の記録", type: :request do
       expect(lot.store).to eq store
       expect(lot.price_yen).to eq 456
       expect(lot.note).to eq "特売"
+    end
+
+    describe "税別の単価から金額を計算する" do
+      def ex_tax_params(unit: "198", count: "2", rate: "8", **attributes)
+        purchase_params(price_yen: "", ex_tax_unit_price_yen: unit, ex_tax_count: count,
+          tax_rate_percent: rate, **attributes)
+      end
+
+      it "3 項目を送ると、税込合計 (1 円未満切り捨て) が金額として記録される" do
+        expect {
+          post item_lots_path(item), params: ex_tax_params
+        }.to change { Lot.count }.by(1)
+
+        expect(response).to redirect_to item_path(item)
+        expect(Lot.order(:id).last.price_yen).to eq 427
+      end
+
+      it "金額 (税込) も入っていれば、そちらが記録される" do
+        post item_lots_path(item), params: ex_tax_params(price_yen: "400")
+
+        expect(Lot.order(:id).last.price_yen).to eq 400
+      end
+
+      it "金額 (税込) が入っていれば、税別単価が巨大な数でも 500 にならず金額どおり記録される" do
+        post item_lots_path(item), params: ex_tax_params(price_yen: "500", unit: "9" * 30)
+
+        expect(response).to redirect_to item_path(item)
+        expect(Lot.order(:id).last.price_yen).to eq 500
+      end
+
+      # 検証の段階で金額を埋めると、描き直した金額の欄に古い計算結果が入り、
+      # 3 項目を直して送り直しても古い金額で記録されてしまう
+      it "ほかの項目のエラーで描き直すと金額の欄は空のまま、直して送り直せば正しく計算される" do
+        post item_lots_path(item), params: ex_tax_params(initial_quantity: "")
+
+        expect(response).to have_http_status(:unprocessable_content)
+        html = response.parsed_body
+        expect(html.at("input[name='lot[price_yen]']")[:value]).to be_blank
+        expect(html.at("input[name='lot[ex_tax_count]']")[:value]).to eq "2"
+
+        post item_lots_path(item), params: ex_tax_params(count: "3")
+
+        # 198 × 3 × 1.08 = 641.52
+        expect(Lot.order(:id).last.price_yen).to eq 641
+      end
+
+      it "不正な値は、描き直すときも入力どおりに戻す" do
+        post item_lots_path(item), params: ex_tax_params(unit: "198.5")
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body.at("input[name='lot[ex_tax_unit_price_yen]']")[:value]).to eq "198.5"
+        expect(response.body).to include "税別単価は整数で入力してください"
+      end
+
+      it "一部だけなら 422 で、入力を保ったまま <details> を開いて描き直す" do
+        expect {
+          post item_lots_path(item), params: ex_tax_params(count: "", rate: "")
+        }.not_to change { Lot.count }
+
+        expect(response).to have_http_status(:unprocessable_content)
+        html = response.parsed_body
+        expect(html.at("input[name='lot[ex_tax_unit_price_yen]']")[:value]).to eq "198"
+        expect(html.at("details:has(input[name='lot[ex_tax_unit_price_yen]'])")[:open]).not_to be_nil
+        expect(response.body).to include "個数を入力してください"
+        expect(response.body).to include "税率を選んでください"
+      end
+
+      it "選んだ税率は描き直しても選ばれたまま (税率だけでも <details> を開く)" do
+        post item_lots_path(item), params: ex_tax_params(unit: "", count: "", rate: "10")
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(response.parsed_body.at("details:has(input[name='lot[tax_rate_percent]'])")[:open]).not_to be_nil
+        expect(response.parsed_body.at("input[name='lot[tax_rate_percent]'][value='10']")[:checked]).not_to be_nil
+        expect(response.parsed_body.at("input[name='lot[tax_rate_percent]'][value='8']")[:checked]).to be_nil
+      end
+
+      it "計算した金額が上限を超えても 500 にならず 422" do
+        post item_lots_path(item), params: ex_tax_params(unit: Lot::MAX_PRICE_YEN.to_s, count: "2")
+
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it "巨大な数でも 500 にならず 422" do
+        post item_lots_path(item), params: ex_tax_params(unit: "9" * 30, count: "9" * 30)
+
+        expect(response).to have_http_status(:unprocessable_content)
+      end
     end
 
     it "期限を管理する品目では期限日を記録できる" do
@@ -394,6 +496,43 @@ RSpec.describe "購入の記録", type: :request do
       expect(lot.store).to eq store
       expect(lot.price_yen).to eq 456
       expect(lot.note).to eq "特売"
+    end
+
+    describe "税別の単価から金額を計算する" do
+      let(:priced_lot) { create(:lot, item: item, user: user, initial_quantity: 12, price_yen: 500) }
+
+      def ex_tax_attributes(price_yen)
+        { acquired_on: priced_lot.acquired_on.to_s, initial_quantity: "12", price_yen: price_yen,
+          ex_tax_unit_price_yen: "198", ex_tax_count: "2", tax_rate_percent: "10" }
+      end
+
+      it "金額を空にして 3 項目を送ると、計算した金額に直る" do
+        patch lot_path(priced_lot), params: { lot: ex_tax_attributes("") }
+
+        expect(response).to redirect_to item_path(item)
+        # 198 × 2 × 1.10 = 435.6
+        expect(priced_lot.reload.price_yen).to eq 435
+      end
+
+      it "金額が入ったままなら、3 項目を送っても金額は変わらない" do
+        patch lot_path(priced_lot), params: { lot: ex_tax_attributes("500") }
+
+        expect(priced_lot.reload.price_yen).to eq 500
+      end
+
+      it "金額が入っていれば、税別単価が巨大な数でも 500 にならず金額どおり保存される" do
+        patch lot_path(priced_lot), params: { lot: ex_tax_attributes("600").merge(ex_tax_unit_price_yen: "9" * 30) }
+
+        expect(response).to redirect_to item_path(item)
+        expect(priced_lot.reload.price_yen).to eq 600
+      end
+
+      it "一部だけなら 422 で、金額は変わらない" do
+        patch lot_path(priced_lot), params: { lot: ex_tax_attributes("").merge(ex_tax_count: "") }
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(priced_lot.reload.price_yen).to eq 500
+      end
     end
 
     # JS があるときは隠れている側の入力欄が送られてこない。

@@ -214,6 +214,260 @@ RSpec.describe Lot, type: :model do
     end
   end
 
+  # レシートに税別の単価・個数・税率しか載っていないときの入力補助
+  # (docs/spec/01-domain-model.md 判断 6)。保存するのは税込合計 (price_yen) だけ
+  describe "税別の単価から税込合計を計算する" do
+    def ex_tax(unit, count, rate)
+      { ex_tax_unit_price_yen: unit, ex_tax_count: count, tax_rate_percent: rate }
+    end
+
+    it "税別単価 × 個数 × (1 + 税率) の 1 円未満を切り捨てて金額にする (8%)" do
+      # 198 × 2 × 1.08 = 427.68
+      lot = create(:lot, price_yen: nil, **ex_tax("198", "2", "8"))
+
+      expect(lot.reload.price_yen).to eq 427
+    end
+
+    it "10% でも計算する" do
+      # 98 × 3 × 1.10 = 323.4
+      lot = create(:lot, price_yen: nil, **ex_tax("98", "3", "10"))
+
+      expect(lot.reload.price_yen).to eq 323
+    end
+
+    # 浮動小数で 1.1 を掛けると 100 × 1.1 = 110.00000000000001 のような誤差が出る
+    it "割り切れるときは誤差なくその金額になる" do
+      lot = create(:lot, price_yen: nil, **ex_tax("100", "1", "10"))
+
+      expect(lot.reload.price_yen).to eq 110
+    end
+
+    it "税別単価 0 円も計算できる (0 円)" do
+      lot = create(:lot, price_yen: nil, **ex_tax("0", "1", "8"))
+
+      expect(lot.reload.price_yen).to eq 0
+    end
+
+    # 検証の段階で埋めると、ほかの項目のエラーで描き直したときに金額の欄に古い計算結果が入り、
+    # 3 項目を直して送り直しても古い金額のほうが勝ってしまう
+    it "検証の段階では金額を埋めず、保存するときに計算する" do
+      lot = build(:lot, price_yen: nil, **ex_tax("198", "2", "8"))
+
+      expect(lot).to be_valid
+      expect(lot.price_yen).to be_nil
+
+      lot.save!
+      expect(lot.reload.price_yen).to eq 427
+    end
+
+    it "ほかの項目のエラーで保存できなかったときも金額は空のまま、3 項目は入力どおり残る" do
+      lot = build(:lot, price_yen: nil, initial_quantity: nil, pack_size: nil, **ex_tax("198.5", "2", "8"))
+
+      expect(lot.save).to be false
+      expect(lot.price_yen).to be_nil
+      expect(lot.ex_tax_unit_price_yen).to eq "198.5"
+      expect(lot.ex_tax_count).to eq "2"
+      expect(lot.tax_rate_percent).to eq "8"
+    end
+
+    # 残っていると、あとで金額を空にして保存しただけで古い 3 項目から計算し直してしまう
+    it "保存したあとは 3 項目を持ち越さない" do
+      lot = create(:lot, price_yen: nil, **ex_tax("198", "2", "8"), with_movement: false)
+
+      expect(lot.ex_tax_unit_price_yen).to be_nil
+      expect(lot.ex_tax_count).to be_nil
+      expect(lot.tax_rate_percent).to be_nil
+
+      lot.update!(price_yen: nil)
+      expect(lot.reload.price_yen).to be_nil
+    end
+
+    it "税込の金額が入っていればそちらが勝ち、3 項目は見ない" do
+      lot = create(:lot, price_yen: "500", **ex_tax("198", "2", "8"))
+
+      expect(lot.reload.price_yen).to eq 500
+    end
+
+    it "税込の金額が入っていれば、3 項目が不正でも検証せずに保存できる" do
+      lot = build(:lot, price_yen: "500", **ex_tax("abc", "", "5"))
+
+      expect(lot.save).to be true
+      expect(lot.reload.price_yen).to eq 500
+    end
+
+    # 4 バイト整数をはみ出す値を integer 型で持っていると、保存後の後片づけ
+    # (changes_applied) で ActiveModel::RangeError になり 500 になる
+    it "税込の金額が入っていれば、3 項目が巨大な数でも例外にならずに保存できる" do
+      lot = build(:lot, price_yen: "500", **ex_tax("9" * 30, "9" * 30, "10"))
+
+      expect { lot.save! }.not_to raise_error
+      expect(lot.reload.price_yen).to eq 500
+    end
+
+    # まとめ購入の行のパラメータは形を検査していないので、配列やハッシュが届くことがある
+    it "配列やハッシュが入っても例外にならない" do
+      ignored = build(:lot, price_yen: "500", **ex_tax([ "1" ], { "a" => "1" }, [ "8" ]))
+      expect { ignored.save! }.not_to raise_error
+
+      invalid = build(:lot, price_yen: nil, **ex_tax([ "198" ], "2", { "a" => "8" }))
+      expect { invalid.valid? }.not_to raise_error
+      expect(invalid).not_to be_valid
+      expect(invalid.errors[:ex_tax_unit_price_yen]).to be_present
+      expect(invalid.errors[:tax_rate_percent]).to be_present
+    end
+
+    it "3 項目とも空なら従来どおり金額なしで記録できる" do
+      lot = build(:lot, price_yen: "", **ex_tax("", "", ""))
+
+      expect(lot).to be_valid
+      expect(lot.price_yen).to be_nil
+    end
+
+    describe "一部だけ入っているとき" do
+      it "欠けている項目にエラーが付き、金額なしでは記録しない" do
+        lot = build(:lot, price_yen: "", **ex_tax("198", "", ""))
+
+        expect(lot).not_to be_valid
+        expect(lot.errors[:ex_tax_count]).to be_present
+        expect(lot.errors[:tax_rate_percent]).to be_present
+        expect(lot.errors[:ex_tax_unit_price_yen]).to be_empty
+        expect(lot.price_yen).to be_nil
+      end
+
+      it "税率だけ選んであっても、単価と個数にエラーが付く" do
+        lot = build(:lot, price_yen: nil, **ex_tax(nil, nil, "10"))
+
+        expect(lot).not_to be_valid
+        expect(lot.errors[:ex_tax_unit_price_yen]).to be_present
+        expect(lot.errors[:ex_tax_count]).to be_present
+        expect(lot.errors[:tax_rate_percent]).to be_empty
+      end
+
+      it "税率を選んでいないときは「選んでください」と出す" do
+        lot = build(:lot, price_yen: nil, **ex_tax("198", "2", ""))
+
+        expect(lot).not_to be_valid
+        expect(lot.errors.full_messages).to include "税率を選んでください"
+      end
+    end
+
+    describe "不正な値" do
+      it "税別単価が負なら検証エラー" do
+        lot = build(:lot, price_yen: nil, **ex_tax("-1", "2", "8"))
+
+        expect(lot).not_to be_valid
+        expect(lot.errors[:ex_tax_unit_price_yen]).to be_present
+        expect(lot.price_yen).to be_nil
+      end
+
+      it "税別単価が小数なら検証エラー (切り捨てて計算しない)" do
+        lot = build(:lot, price_yen: nil, **ex_tax("198.5", "2", "8"))
+
+        expect(lot).not_to be_valid
+        expect(lot.errors[:ex_tax_unit_price_yen]).to be_present
+        expect(lot.price_yen).to be_nil
+      end
+
+      # integer に cast すると nil になり「空」に見えてしまう値。
+      # 空扱いにすると、ほかの 2 項目が空なら黙って金額なしで記録されてしまう
+      it "税別単価が文字なら、ほかの項目が空でも検証エラー" do
+        lot = build(:lot, price_yen: nil, **ex_tax("abc", "", ""))
+
+        expect(lot).not_to be_valid
+        expect(lot.errors[:ex_tax_unit_price_yen]).to be_present
+      end
+
+      it "個数が 0 なら検証エラー" do
+        lot = build(:lot, price_yen: nil, **ex_tax("198", "0", "8"))
+
+        expect(lot).not_to be_valid
+        expect(lot.errors[:ex_tax_count]).to be_present
+      end
+
+      it "個数が小数なら検証エラー" do
+        lot = build(:lot, price_yen: nil, **ex_tax("198", "1.5", "8"))
+
+        expect(lot).not_to be_valid
+        expect(lot.errors[:ex_tax_count]).to be_present
+      end
+
+      it "税率が 8 / 10 以外なら検証エラー" do
+        %w[ 0 5 8.5 abc ].each do |rate|
+          lot = build(:lot, price_yen: nil, **ex_tax("198", "2", rate))
+
+          expect(lot).not_to be_valid, "税率 #{rate.inspect} が通ってしまった"
+          expect(lot.errors[:tax_rate_percent]).to be_present
+          expect(lot.price_yen).to be_nil
+        end
+      end
+
+      it "税率が 8 / 10 以外なら、選べる税率を伝える" do
+        lot = build(:lot, price_yen: nil, **ex_tax("198", "2", "5"))
+
+        expect(lot).not_to be_valid
+        expect(lot.errors.full_messages).to include "税率は 8% か 10% を選んでください"
+      end
+
+      it "税率 8 と 10 は通る" do
+        Lot::TAX_RATE_PERCENTS.each do |rate|
+          expect(build(:lot, price_yen: nil, **ex_tax("198", "2", rate.to_s))).to be_valid
+        end
+      end
+    end
+
+    describe "上限" do
+      it "税別単価は MAX_PRICE_YEN まで、個数は MAX_QUANTITY まで" do
+        expect(build(:lot, price_yen: nil,
+          **ex_tax((described_class::MAX_PRICE_YEN + 1).to_s, "1", "8"))).not_to be_valid
+        expect(build(:lot, price_yen: nil,
+          **ex_tax("1", (described_class::MAX_QUANTITY + 1).to_s, "8"))).not_to be_valid
+      end
+
+      # 金額は検証の段階では埋めないので、計算結果の上限は 3 項目の側で検証する
+      it "計算した金額が MAX_PRICE_YEN を超えたら税別単価の検証エラーになる" do
+        lot = build(:lot, price_yen: nil, **ex_tax(described_class::MAX_PRICE_YEN.to_s, "2", "10"))
+
+        expect { lot.valid? }.not_to raise_error
+        expect(lot).not_to be_valid
+        expect(lot.errors.full_messages).to include "税別単価 × 個数から計算した金額 (税込) が上限 (9,999,999 円) を超えています"
+        expect(lot.price_yen).to be_nil
+      end
+
+      # 上限の判定は切り捨てたあとの金額で行う
+      it "切り捨てた金額が MAX_PRICE_YEN 以下なら記録できる (境界)" do
+        # 9_259_259 × 1.08 = 9_999_999.72 → 9_999_999 (上限ちょうど)
+        expect(build(:lot, price_yen: nil, **ex_tax("9259259", "1", "8"))).to be_valid
+        # 9_259_260 × 1.08 = 10_000_000.8 → 10_000_000 (上限超え)
+        expect(build(:lot, price_yen: nil, **ex_tax("9259260", "1", "8"))).not_to be_valid
+      end
+
+      it "巨大な数でも例外にならず検証エラーになる" do
+        lot = build(:lot, price_yen: nil, **ex_tax("9" * 30, "9" * 30, "10"))
+
+        expect { lot.valid? }.not_to raise_error
+        expect(lot).not_to be_valid
+        expect(lot.errors[:ex_tax_unit_price_yen]).to be_present
+        expect(lot.errors[:ex_tax_count]).to be_present
+      end
+    end
+
+    describe "編集" do
+      let(:lot) { create(:lot, price_yen: 500) }
+
+      it "金額が入っているロットでは、3 項目を送っても上書きしない" do
+        lot.update!(**ex_tax("198", "2", "8"))
+
+        expect(lot.reload.price_yen).to eq 500
+      end
+
+      it "金額を空にして 3 項目を入れれば計算した金額になる" do
+        lot.update!(price_yen: "", **ex_tax("198", "2", "8"))
+
+        expect(lot.reload.price_yen).to eq 427
+      end
+    end
+  end
+
   describe "単価" do
     it "単価は 税込合計 ÷ 入庫数量 (10 円以上は四捨五入して円単位)" do
       expect(build(:lot, price_yen: 456, initial_quantity: 12).unit_price_yen).to eq 38

@@ -57,6 +57,26 @@ RSpec.describe "まとめ購入", type: :request do
       expect(response.parsed_body.css("input[name$='[expires_on]']").size).to eq 1
     end
 
+    # 行ごとに独立した入力補助 (Stimulus の controller も行ごと)
+    it "行ごとに、税別の単価・個数・税率の入力欄が閉じた <details> の中に出る" do
+      entries = [ check(urgent_item(name: "ティッシュ")), check(urgent_item(name: "しょうゆ")) ]
+
+      get new_purchase_path
+
+      entries.each do |entry|
+        prefix = "purchase[lines][#{entry.id}]"
+        details = response.parsed_body.at("details:has(input[name='#{prefix}[ex_tax_unit_price_yen]'])")
+        expect(details).to be_present
+        expect(details[:open]).to be_nil
+        expect(details.at("input[name='#{prefix}[ex_tax_count]']")).to be_present
+        expect(details.css("input[type='radio'][name='#{prefix}[tax_rate_percent]']").map { |radio| radio[:value] })
+          .to eq %w[ 8 10 ]
+      end
+      # id が行どうしで重ならない (ラベルが別の行の欄を指さない)
+      ids = response.parsed_body.css("input[name$='[ex_tax_unit_price_yen]']").map { |input| input[:id] }
+      expect(ids.uniq.size).to eq 2
+    end
+
     it "自由入力のチェック済みは在庫に記録されないことを明示する" do
       check(urgent_item)
       entry = create(:shopping_list_item, :free_text, :checked, free_text: "はがき", added_by: user)
@@ -146,6 +166,86 @@ RSpec.describe "まとめ購入", type: :request do
       } }
 
       expect(item.reload.lots.order(:id).last.initial_quantity).to eq 24
+    end
+
+    describe "税別の単価から金額を計算する" do
+      def ex_tax(unit: "198", count: "2", rate: "8", price: "")
+        { price_yen: price, ex_tax_unit_price_yen: unit, ex_tax_count: count, tax_rate_percent: rate }
+      end
+
+      it "3 項目を送った行は、税込合計 (1 円未満切り捨て) が金額として記録される" do
+        first = urgent_item(name: "ティッシュ")
+        second = urgent_item(name: "しょうゆ")
+        entries = [ check(first), check(second) ]
+
+        post purchases_path, params: { purchase: {
+          acquired_on: Date.current.to_s,
+          lines: line_params(entries.first, **ex_tax)
+            .merge(line_params(entries.second, **ex_tax(unit: "98", count: "3", rate: "10")))
+        } }
+
+        expect(response).to redirect_to shopping_list_path
+        expect(first.reload.lots.order(:id).last.price_yen).to eq 427
+        expect(second.reload.lots.order(:id).last.price_yen).to eq 323
+      end
+
+      it "金額が入っていれば、税別単価が巨大な数や配列でも 500 にならず金額どおり記録される" do
+        first = urgent_item(name: "ティッシュ")
+        second = urgent_item(name: "しょうゆ")
+        entries = [ check(first), check(second) ]
+
+        post purchases_path, params: { purchase: {
+          acquired_on: Date.current.to_s,
+          lines: line_params(entries.first, **ex_tax(unit: "9" * 30, price: "500"))
+            .merge(line_params(entries.second, **ex_tax(count: [ "1", "2" ], price: "300")))
+        } }
+
+        expect(response).to redirect_to shopping_list_path
+        expect(first.reload.lots.order(:id).last.price_yen).to eq 500
+        expect(second.reload.lots.order(:id).last.price_yen).to eq 300
+      end
+
+      # 行のパラメータは形を検査していない (Lot が検証する)
+      it "金額が空で 3 項目に配列やハッシュが届いても 500 にならず 422" do
+        entry = check(urgent_item)
+
+        expect {
+          post purchases_path, params: { purchase: {
+            acquired_on: Date.current.to_s,
+            lines: line_params(entry, **ex_tax(unit: [ "198" ], rate: { "a" => "8" }))
+          } }
+        }.not_to change(Lot, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it "1 行でも一部だけなら 1 件も記録せず、422 で入力と <details open> を保って描き直す" do
+        first = urgent_item(name: "ティッシュ")
+        second = urgent_item(name: "しょうゆ")
+        entries = [ check(first), check(second) ]
+
+        expect {
+          post purchases_path, params: { purchase: {
+            acquired_on: Date.current.to_s,
+            lines: line_params(entries.first, **ex_tax)
+              .merge(line_params(entries.second, **ex_tax(count: "", rate: "")))
+          } }
+        }.not_to change(Lot, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(ShoppingListItem.count).to eq 2
+        html = response.parsed_body
+        prefix = "purchase[lines][#{entries.second.id}]"
+        expect(html.at("input[name='#{prefix}[ex_tax_unit_price_yen]']")[:value]).to eq "198"
+        expect(html.at("details:has(input[name='#{prefix}[ex_tax_unit_price_yen]'])")[:open]).not_to be_nil
+        # 行のすぐ下にエラーを出す (行のエラーは LOT_ATTRIBUTES で絞り込んでいる)
+        expect(response.body).to include "個数を入力してください"
+        expect(response.body).to include "税率を選んでください"
+        # 正しく入れた行も、金額は検証の段階では埋めない (直して送り直したときに古い金額が勝たない)
+        first_prefix = "purchase[lines][#{entries.first.id}]"
+        expect(html.at("input[name='#{first_prefix}[price_yen]']")[:value]).to be_blank
+        expect(html.at("input[name='#{first_prefix}[ex_tax_count]']")[:value]).to eq "2"
+      end
     end
 
     it "1 件でも検証エラーなら 1 件も記録せず、422 で入力を保ったまま描き直す" do

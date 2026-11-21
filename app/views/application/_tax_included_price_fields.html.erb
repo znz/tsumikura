@@ -1,0 +1,60 @@
+<%# locals: (lot:, field_name:, field_id:) %>
+<%#
+  税別の単価・個数・税率から金額 (税込) を計算する入力補助 (docs/spec/03-screens.md 画面 5 / 5b)。
+  単品の購入 (lots/_form) とまとめ購入の 1 行 (purchases/_line) で共有する。
+  field_name / field_id は属性名を受け取って入力欄の name / id を返すもの。
+
+  3 項目は保存しない。JS が無くてもサーバ側 (Lot#apply_ex_tax_price) が、金額 (税込) が空のときだけ
+  保存の直前に計算するので、送るだけでよい (検証エラーで描き直すときは、金額の欄は空のまま戻る)。JS があるときは tax_included_price_controller.js がその場で
+  金額の欄を埋める。呼び出し側で、金額の欄と一緒に data-controller="tax-included-price" の要素で囲む。
+
+  3 項目は型を持たず送られた値のままなので、描き直したときも "198.5" のような入力をそのまま見せる。
+  どれかに値が入っていれば開いておく。
+%>
+<%# 数字の欄は入力のたびに計算する (change は消去したときの取りこぼし防止) %>
+<% number_actions = "input->tax-included-price#calculate change->tax-included-price#calculate" %>
+<% inputs = Lot::EX_TAX_PRICE_INPUTS.keys.index_with { |attribute| lot[attribute] } %>
+<details class="group mt-3 rounded-lg border border-slate-200 px-3" <%= "open" if inputs.values.any?(&:present?) %>>
+  <summary class="flex min-h-11 cursor-pointer list-none items-center gap-2 py-2 text-sm font-medium text-slate-700">
+    <span class="text-slate-400 transition-transform group-open:rotate-90" aria-hidden="true">▶</span>
+    <span>税別の単価から計算する</span>
+  </summary>
+
+  <div class="grid grid-cols-2 gap-3">
+    <div>
+      <%= label_tag field_id.call(:ex_tax_unit_price_yen), Lot.human_attribute_name(:ex_tax_unit_price_yen),
+            class: label_classes %>
+      <%= number_field_tag field_name.call(:ex_tax_unit_price_yen), inputs[:ex_tax_unit_price_yen],
+            id: field_id.call(:ex_tax_unit_price_yen), min: 0, inputmode: "numeric", class: field_classes,
+            data: { tax_included_price_target: "unitPrice", action: number_actions } %>
+    </div>
+    <div>
+      <%= label_tag field_id.call(:ex_tax_count), Lot.human_attribute_name(:ex_tax_count),
+            class: label_classes %>
+      <%= number_field_tag field_name.call(:ex_tax_count), inputs[:ex_tax_count],
+            id: field_id.call(:ex_tax_count), min: 1, inputmode: "numeric", class: field_classes,
+            data: { tax_included_price_target: "count", action: number_actions } %>
+    </div>
+  </div>
+
+  <fieldset class="mt-3">
+    <legend class="<%= label_classes %>"><%= Lot.human_attribute_name(:tax_rate_percent) %></legend>
+    <%# 未選択で始める (うっかり既定の税率で計算しないように) %>
+    <div class="mt-2 flex gap-2">
+      <% Lot::TAX_RATE_PERCENTS.each do |rate| %>
+        <label class="flex min-h-11 flex-1 items-center gap-3">
+          <%= radio_button_tag field_name.call(:tax_rate_percent), rate,
+                inputs[:tax_rate_percent].to_s.strip == rate.to_s,
+                id: "#{field_id.call(:tax_rate_percent)}_#{rate}", class: "size-5",
+                data: { tax_included_price_target: "rate", action: "change->tax-included-price#calculate" } %>
+          <span class="text-sm text-slate-700"><%= rate %>%</span>
+        </label>
+      <% end %>
+    </div>
+  </fieldset>
+
+  <p class="<%= hint_classes("pb-3") %>">
+    3 つとも入れると、税込の合計 (1 円未満切り捨て) を計算します。
+    金額 (税込) を直接入れてあるときは、そちらが優先されます。
+  </p>
+</details>

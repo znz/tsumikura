@@ -5,8 +5,11 @@ class PurchasesController < ApplicationController
 
   include ShoppingListLoading
 
-  # 行ごとに入れる値 (購入日・店舗は共通)
-  LINE_KEYS = %w[ initial_quantity pack_size pack_count price_yen expires_on ].freeze
+  # 行ごとに入れる値 (購入日・店舗は共通)。税別単価・個数・税率は金額を計算する入力補助
+  LINE_KEYS = %w[
+    initial_quantity pack_size pack_count price_yen expires_on
+    ex_tax_unit_price_yen ex_tax_count tax_rate_percent
+  ].freeze
 
   NO_CHECKED_MESSAGE = "買い物リストでチェックした品目がありません。".freeze
   # 自由入力は品目が無いので在庫に記録できない。チェックを外すか、リストから外してもらう

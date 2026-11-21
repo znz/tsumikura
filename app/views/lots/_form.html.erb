@@ -90,11 +90,15 @@
     </div>
   <% end %>
 
-  <div>
+  <%# 金額の欄と、税別の単価から金額を計算する入力補助 (tax_included_price_controller.js) %>
+  <div data-controller="tax-included-price">
     <%= form.label :price_yen, class: label_classes %>
     <%= form.number_field :price_yen, min: 0, inputmode: "numeric",
-          placeholder: "税込で入力", class: field_classes %>
+          placeholder: "税込で入力", class: field_classes,
+          data: { tax_included_price_target: "total" } %>
     <p class="<%= hint_classes %>">レシートの合計 (税込) を入れます。単価は数量から計算します。</p>
+    <%= render "tax_included_price_fields", lot: lot,
+          field_name: form.method(:field_name), field_id: form.method(:field_id) %>
   </div>
 
   <div>

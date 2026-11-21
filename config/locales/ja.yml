@@ -118,6 +118,10 @@ ja:
         pack_size: 入数
         pack_count: パック数
         price_yen: 金額 (税込)
+        # 税込合計を計算する入力補助 (DB には保存しない)
+        ex_tax_unit_price_yen: 税別単価
+        ex_tax_count: 個数
+        tax_rate_percent: 税率
         store: 店舗
         store_id: 店舗
         user: 記録者
@@ -196,6 +200,13 @@ ja:
               future: に未来の日付は指定できません
             initial_quantity:
               below_consumed: は、このロットから既に使われた数 (%{consumed}) より小さくできません
+            ex_tax_unit_price_yen:
+              # 金額 (税込) は保存の直前まで埋めないので、計算結果の上限は税別単価の側で伝える
+              total_too_large: " × 個数から計算した金額 (税込) が上限 (%{max} 円) を超えています"
+            tax_rate_percent:
+              # 税率はラジオボタンで選ぶ
+              blank: を選んでください
+              inclusion: は 8% か 10% を選んでください
             base:
               # 棚卸のマイナス差分を消すと、確定済みの棚卸の記録と消費ペースまで壊れる
               consumed: 使用・廃棄・棚卸の記録があるロットは削除できません

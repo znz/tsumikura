@@ -5,9 +5,11 @@ class LotsController < ApplicationController
 
   include StockTakeWarning
 
-  # kind はフォームから変えられるのは作成時だけ (編集で由来をすり替えさせない)
+  # kind はフォームから変えられるのは作成時だけ (編集で由来をすり替えさせない)。
+  # 税別単価・個数・税率は保存しない入力補助で、金額 (税込) が空のときだけ使う (Lot#apply_ex_tax_price)
   EDITABLE_ATTRIBUTES = %i[
     acquired_on expires_on initial_quantity pack_size pack_count price_yen store_id note
+    ex_tax_unit_price_yen ex_tax_count tax_rate_percent
   ].freeze
 
   before_action :set_item, only: %i[ new create ]

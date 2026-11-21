@@ -44,12 +44,17 @@
     </p>
   </div>
 
-  <div class="mt-3">
+  <%# 金額の欄と、税別の単価から金額を計算する入力補助。controller は行ごとに独立させる %>
+  <div class="mt-3" data-controller="tax-included-price">
     <%= label_tag purchase_line_field_id(line, :price_yen), Lot.human_attribute_name(:price_yen),
           class: label_classes %>
     <%= number_field_tag purchase_line_field_name(line, :price_yen), line.lot.price_yen,
           id: purchase_line_field_id(line, :price_yen), min: 0, inputmode: "numeric",
-          placeholder: "税込で入力", class: field_classes %>
+          placeholder: "税込で入力", class: field_classes,
+          data: { tax_included_price_target: "total" } %>
+    <%= render "tax_included_price_fields", lot: line.lot,
+          field_name: ->(attribute) { purchase_line_field_name(line, attribute) },
+          field_id: ->(attribute) { purchase_line_field_id(line, attribute) } %>
   </div>
 
   <%# 期限の欄は「期限を管理する」品目にだけ出す (lots/_form と同じ規則) %>
