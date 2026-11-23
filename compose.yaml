@@ -1,7 +1,7 @@
 # 開発・テスト用の PostgreSQL。本番は dokku-postgres を使う (docs/ops/deployment.md)
 services:
   postgres:
-    image: postgres:18
+    image: postgres:19
     # 開発マシンではホストから Docker ブリッジへの TCP が遮断されていて、ports: の公開が使えない。
     # ホストネットワークで動かし、ループバックだけで待ち受ける (外部には公開しない)。Linux 専用
     network_mode: host
